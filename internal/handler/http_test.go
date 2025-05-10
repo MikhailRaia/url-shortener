@@ -2,10 +2,13 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type mockURLService struct {
@@ -62,15 +65,6 @@ func TestHandler_handleShorten(t *testing.T) {
 			wantStatus:    http.StatusBadRequest,
 			wantBody:      "",
 		},
-		{
-			name:          "Invalid method",
-			requestURL:    "/",
-			requestMethod: http.MethodGet,
-			requestBody:   "https://example.com",
-			contentType:   "text/plain",
-			wantStatus:    http.StatusBadRequest,
-			wantBody:      "",
-		},
 	}
 
 	for _, tt := range tests {
@@ -90,14 +84,14 @@ func TestHandler_handleShorten(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
-			handler.handleRequest(rr, req)
+			handler.handleShorten(rr, req)
 
 			if rr.Code != tt.wantStatus {
-				t.Errorf("handler.handleRequest() status = %v, want %v", rr.Code, tt.wantStatus)
+				t.Errorf("handler.handleShorten() status = %v, want %v", rr.Code, tt.wantStatus)
 			}
 
 			if tt.wantBody != "" && strings.TrimSpace(rr.Body.String()) != tt.wantBody {
-				t.Errorf("handler.handleRequest() body = %v, want %v", rr.Body.String(), tt.wantBody)
+				t.Errorf("handler.handleShorten() body = %v, want %v", rr.Body.String(), tt.wantBody)
 			}
 		})
 	}
@@ -105,38 +99,28 @@ func TestHandler_handleShorten(t *testing.T) {
 
 func TestHandler_handleRedirect(t *testing.T) {
 	tests := []struct {
-		name          string
-		requestURL    string
-		requestMethod string
-		mockOrigURL   string
-		mockFound     bool
-		wantStatus    int
-		wantLocation  string
+		name         string
+		urlID        string
+		mockOrigURL  string
+		mockFound    bool
+		wantStatus   int
+		wantLocation string
 	}{
 		{
-			name:          "Valid redirect",
-			requestURL:    "/abc123",
-			requestMethod: http.MethodGet,
-			mockOrigURL:   "https://example.com",
-			mockFound:     true,
-			wantStatus:    http.StatusTemporaryRedirect,
-			wantLocation:  "https://example.com",
+			name:         "Valid redirect",
+			urlID:        "abc123",
+			mockOrigURL:  "https://example.com",
+			mockFound:    true,
+			wantStatus:   http.StatusTemporaryRedirect,
+			wantLocation: "https://example.com",
 		},
 		{
-			name:          "ID not found",
-			requestURL:    "/nonexistent",
-			requestMethod: http.MethodGet,
-			mockOrigURL:   "",
-			mockFound:     false,
-			wantStatus:    http.StatusBadRequest,
-			wantLocation:  "",
-		},
-		{
-			name:          "Invalid method",
-			requestURL:    "/abc123",
-			requestMethod: http.MethodPost,
-			wantStatus:    http.StatusBadRequest,
-			wantLocation:  "",
+			name:         "ID not found",
+			urlID:        "nonexistent",
+			mockOrigURL:  "",
+			mockFound:    false,
+			wantStatus:   http.StatusBadRequest,
+			wantLocation: "",
 		},
 	}
 
@@ -150,20 +134,24 @@ func TestHandler_handleRedirect(t *testing.T) {
 
 			handler := NewHandler(mockService)
 
-			req := httptest.NewRequest(tt.requestMethod, tt.requestURL, nil)
+			req := httptest.NewRequest(http.MethodGet, "/"+tt.urlID, nil)
+
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("id", tt.urlID)
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 			rr := httptest.NewRecorder()
 
-			handler.handleRequest(rr, req)
+			handler.handleRedirect(rr, req)
 
 			if rr.Code != tt.wantStatus {
-				t.Errorf("handler.handleRequest() status = %v, want %v", rr.Code, tt.wantStatus)
+				t.Errorf("handler.handleRedirect() status = %v, want %v", rr.Code, tt.wantStatus)
 			}
 
 			if tt.wantLocation != "" {
 				location := rr.Header().Get("Location")
 				if location != tt.wantLocation {
-					t.Errorf("handler.handleRequest() Location = %v, want %v", location, tt.wantLocation)
+					t.Errorf("handler.handleRedirect() Location = %v, want %v", location, tt.wantLocation)
 				}
 			}
 		})
@@ -174,8 +162,17 @@ func TestHandler_RegisterRoutes(t *testing.T) {
 	mockService := &mockURLService{}
 	handler := NewHandler(mockService)
 
-	mux := handler.RegisterRoutes()
-	if mux == nil {
+	router := handler.RegisterRoutes()
+	if router == nil {
 		t.Error("handler.RegisterRoutes() returned nil")
+	}
+
+	chiRouter, ok := router.(*chi.Mux)
+	if !ok {
+		t.Error("handler.RegisterRoutes() did not return a chi.Mux")
+	}
+
+	if chiRouter == nil {
+		t.Error("Failed to create Chi router")
 	}
 }

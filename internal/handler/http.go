@@ -4,6 +4,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type URLService interface {
@@ -22,25 +25,17 @@ func NewHandler(urlService URLService) *Handler {
 }
 
 func (h *Handler) RegisterRoutes() http.Handler {
-	mux := http.NewServeMux()
+	r := chi.NewRouter()
 
-	mux.HandleFunc("/", h.handleRequest)
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
-	return mux
-}
+	r.Post("/", h.handleShorten)
+	r.Get("/{id}", h.handleRedirect)
 
-func (h *Handler) handleRequest(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost && r.URL.Path == "/" {
-		h.handleShorten(w, r)
-		return
-	}
-
-	if r.Method == http.MethodGet && r.URL.Path != "/" {
-		h.handleRedirect(w, r)
-		return
-	}
-
-	w.WriteHeader(http.StatusBadRequest)
+	return r
 }
 
 func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +75,11 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleRedirect(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/")
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	originalURL, found := h.urlService.GetOriginalURL(id)
 	if !found {
