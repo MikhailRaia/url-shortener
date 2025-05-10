@@ -51,10 +51,7 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			panic(err)
-		}
+		_ = Body.Close()
 	}(r.Body)
 
 	originalURL := strings.TrimSpace(string(body))
@@ -83,7 +80,7 @@ func (h *Handler) handleRedirect(w http.ResponseWriter, r *http.Request) {
 
 	originalURL, found := h.urlService.GetOriginalURL(id)
 	if !found {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
