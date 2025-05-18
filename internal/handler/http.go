@@ -35,6 +35,7 @@ func (h *Handler) RegisterRoutes() http.Handler {
 	r.Use(logger.RequestLogger)
 
 	r.Post("/", h.handleShorten)
+	r.Post("/api/shorten", h.HandleShortenJSON)
 	r.Get("/{id}", h.handleRedirect)
 
 	return r
