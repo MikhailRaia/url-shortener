@@ -1,8 +1,8 @@
 package service
 
 import (
+	"fmt"
 	"github.com/MikhailRaia/url-shortener/internal/storage"
-	"path"
 )
 
 type URLService struct {
@@ -23,7 +23,7 @@ func (s *URLService) ShortenURL(originalURL string) (string, error) {
 		return "", err
 	}
 
-	shortenedURL := path.Join(s.baseURL, id)
+	shortenedURL := fmt.Sprintf("%s/%s", s.baseURL, id)
 	return shortenedURL, nil
 }
 
