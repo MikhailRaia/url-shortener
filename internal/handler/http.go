@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/MikhailRaia/url-shortener/internal/logger"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 type URLService interface {
@@ -27,10 +28,11 @@ func NewHandler(urlService URLService) *Handler {
 func (h *Handler) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
 
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(chimiddleware.RequestID)
+	r.Use(chimiddleware.RealIP)
+	r.Use(chimiddleware.Recoverer)
+
+	r.Use(logger.RequestLogger)
 
 	r.Post("/", h.handleShorten)
 	r.Get("/{id}", h.handleRedirect)
