@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/MikhailRaia/url-shortener/internal/logger"
+	"github.com/MikhailRaia/url-shortener/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
@@ -34,6 +35,9 @@ func (h *Handler) RegisterRoutes() http.Handler {
 
 	r.Use(logger.RequestLogger)
 
+	r.Use(middleware.GzipReader)
+	r.Use(middleware.GzipMiddleware)
+
 	r.Post("/", h.handleShorten)
 	r.Post("/api/shorten", h.HandleShortenJSON)
 	r.Get("/{id}", h.handleRedirect)
@@ -42,10 +46,14 @@ func (h *Handler) RegisterRoutes() http.Handler {
 }
 
 func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
-	contentType := r.Header.Get("Content-Type")
-	if !strings.Contains(contentType, "text/plain") && contentType != "" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	contentEncoding := r.Header.Get("Content-Encoding")
+
+	if contentEncoding != "gzip" {
+		contentType := r.Header.Get("Content-Type")
+		if !strings.Contains(contentType, "text/plain") && contentType != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
 
 	body, err := io.ReadAll(r.Body)

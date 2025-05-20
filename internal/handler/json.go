@@ -17,7 +17,9 @@ type ShortenResponse struct {
 
 func (h *Handler) HandleShortenJSON(w http.ResponseWriter, r *http.Request) {
 	contentType := r.Header.Get("Content-Type")
-	if !strings.Contains(contentType, "application/json") {
+	contentEncoding := r.Header.Get("Content-Encoding")
+
+	if contentEncoding != "gzip" && !strings.Contains(contentType, "application/json") {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
