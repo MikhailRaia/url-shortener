@@ -7,6 +7,8 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/handler"
 	"github.com/MikhailRaia/url-shortener/internal/logger"
 	"github.com/MikhailRaia/url-shortener/internal/service"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
+	"github.com/MikhailRaia/url-shortener/internal/storage/file"
 	"github.com/MikhailRaia/url-shortener/internal/storage/memory"
 	"github.com/rs/zerolog/log"
 )
@@ -19,9 +21,23 @@ type App struct {
 func NewApp(cfg *config.Config) *App {
 	logger.InitLogger()
 
-	storage := memory.NewStorage()
+	var urlStorage storage.URLStorage
+	var err error
 
-	urlService := service.NewURLService(storage, cfg.BaseURL)
+	if cfg.FileStoragePath != "" {
+		urlStorage, err = file.NewStorage(cfg.FileStoragePath)
+		if err != nil {
+			log.Error().Err(err).Str("path", cfg.FileStoragePath).Msg("Failed to initialize file storage, falling back to memory storage")
+			urlStorage = memory.NewStorage()
+		} else {
+			log.Info().Str("path", cfg.FileStoragePath).Msg("Using file storage")
+		}
+	} else {
+		urlStorage = memory.NewStorage()
+		log.Info().Msg("Using memory storage")
+	}
+
+	urlService := service.NewURLService(urlStorage, cfg.BaseURL)
 
 	httpHandler := handler.NewHandler(urlService)
 
