@@ -1,7 +1,9 @@
 package memory
 
 import (
+	"fmt"
 	"github.com/MikhailRaia/url-shortener/internal/generator"
+	"github.com/MikhailRaia/url-shortener/internal/model"
 	"sync"
 )
 
@@ -35,4 +37,23 @@ func (s *Storage) Get(id string) (string, bool) {
 
 	originalURL, found := s.urlMap[id]
 	return originalURL, found
+}
+
+func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, error) {
+	result := make(map[string]string)
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for _, item := range items {
+		id, err := generator.GenerateID(8)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate ID: %w", err)
+		}
+
+		s.urlMap[id] = item.OriginalURL
+		result[item.CorrelationID] = id
+	}
+
+	return result, nil
 }

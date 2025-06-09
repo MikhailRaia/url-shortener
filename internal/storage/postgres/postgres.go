@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/MikhailRaia/url-shortener/internal/generator"
+	"github.com/MikhailRaia/url-shortener/internal/model"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
@@ -123,6 +124,51 @@ func (s *Storage) Get(id string) (string, bool) {
 
 func (s *Storage) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
+}
+
+func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, error) {
+	ctx := context.Background()
+	result := make(map[string]string)
+
+	// Для каждого URL генерируем ID и сохраняем в базу
+	for _, item := range items {
+		// Генерируем ID для сокращенного URL
+		id, err := generator.GenerateID(8)
+		if err != nil {
+			return nil, fmt.Errorf("error generating ID: %w", err)
+		}
+
+		// Проверяем, существует ли URL с таким ID
+		var exists bool
+		for {
+			err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM urls WHERE id = $1)", id).Scan(&exists)
+			if err != nil {
+				return nil, fmt.Errorf("error checking if ID exists: %w", err)
+			}
+
+			if !exists {
+				break
+			}
+
+			// Если ID уже существует, генерируем новый
+			id, err = generator.GenerateID(8)
+			if err != nil {
+				return nil, fmt.Errorf("error generating new ID: %w", err)
+			}
+		}
+
+		// Сохраняем URL в базу данных
+		_, err = s.pool.Exec(ctx, "INSERT INTO urls (id, original_url) VALUES ($1, $2)",
+			id, item.OriginalURL)
+		if err != nil {
+			return nil, fmt.Errorf("error inserting URL into database: %w", err)
+		}
+
+		// Добавляем ID в результат
+		result[item.CorrelationID] = id
+	}
+
+	return result, nil
 }
 
 func (s *Storage) Close() {

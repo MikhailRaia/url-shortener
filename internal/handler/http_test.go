@@ -8,12 +8,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MikhailRaia/url-shortener/internal/model"
 	"github.com/go-chi/chi/v5"
 )
 
 type mockURLService struct {
 	shortenURLFunc     func(originalURL string) (string, error)
 	getOriginalURLFunc func(id string) (string, bool)
+	shortenBatchFunc   func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
 }
 
 func (m *mockURLService) ShortenURL(originalURL string) (string, error) {
@@ -22,6 +24,14 @@ func (m *mockURLService) ShortenURL(originalURL string) (string, error) {
 
 func (m *mockURLService) GetOriginalURL(id string) (string, bool) {
 	return m.getOriginalURLFunc(id)
+}
+
+func (m *mockURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
+	if m.shortenBatchFunc != nil {
+		return m.shortenBatchFunc(items)
+	}
+	// Возвращаем пустой результат, если функция не определена
+	return []model.BatchResponseItem{}, nil
 }
 
 func TestHandler_handleShorten(t *testing.T) {

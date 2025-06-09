@@ -3,11 +3,14 @@ package service
 import (
 	"errors"
 	"testing"
+
+	"github.com/MikhailRaia/url-shortener/internal/model"
 )
 
 type mockStorage struct {
-	saveFunc func(originalURL string) (string, error)
-	getFunc  func(id string) (string, bool)
+	saveFunc      func(originalURL string) (string, error)
+	getFunc       func(id string) (string, bool)
+	saveBatchFunc func(items []model.BatchRequestItem) (map[string]string, error)
 }
 
 func (m *mockStorage) Save(originalURL string) (string, error) {
@@ -16,6 +19,14 @@ func (m *mockStorage) Save(originalURL string) (string, error) {
 
 func (m *mockStorage) Get(id string) (string, bool) {
 	return m.getFunc(id)
+}
+
+func (m *mockStorage) SaveBatch(items []model.BatchRequestItem) (map[string]string, error) {
+	if m.saveBatchFunc != nil {
+		return m.saveBatchFunc(items)
+	}
+	// Возвращаем пустую карту, если функция не определена
+	return make(map[string]string), nil
 }
 
 func TestURLService_ShortenURL(t *testing.T) {

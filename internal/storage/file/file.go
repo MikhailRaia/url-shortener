@@ -73,6 +73,37 @@ func (s *Storage) Get(id string) (string, bool) {
 	return originalURL, found
 }
 
+func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, error) {
+	result := make(map[string]string)
+
+	for _, item := range items {
+		id, err := generator.GenerateID(8)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate ID: %w", err)
+		}
+
+		s.mutex.Lock()
+		s.idCounter++
+		uuid := strconv.Itoa(s.idCounter)
+		s.urlMap[id] = item.OriginalURL
+		s.mutex.Unlock()
+
+		record := model.URLRecord{
+			UUID:        uuid,
+			ShortURL:    id,
+			OriginalURL: item.OriginalURL,
+		}
+
+		if err := s.saveRecordToFile(record); err != nil {
+			return nil, fmt.Errorf("failed to save record to file: %w", err)
+		}
+
+		result[item.CorrelationID] = id
+	}
+
+	return result, nil
+}
+
 func (s *Storage) loadFromFile() error {
 	file, err := os.OpenFile(s.filePath, os.O_RDONLY|os.O_CREATE, 0644)
 	if err != nil {
