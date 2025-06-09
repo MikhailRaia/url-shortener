@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/MikhailRaia/url-shortener/internal/logger"
+	"github.com/MikhailRaia/url-shortener/internal/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 type URLService interface {
@@ -27,22 +29,31 @@ func NewHandler(urlService URLService) *Handler {
 func (h *Handler) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
 
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(chimiddleware.RequestID)
+	r.Use(chimiddleware.RealIP)
+	r.Use(chimiddleware.Recoverer)
+
+	r.Use(logger.RequestLogger)
+
+	r.Use(middleware.GzipReader)
+	r.Use(middleware.GzipMiddleware)
 
 	r.Post("/", h.handleShorten)
+	r.Post("/api/shorten", h.HandleShortenJSON)
 	r.Get("/{id}", h.handleRedirect)
 
 	return r
 }
 
 func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
-	contentType := r.Header.Get("Content-Type")
-	if !strings.Contains(contentType, "text/plain") && contentType != "" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	contentEncoding := r.Header.Get("Content-Encoding")
+
+	if contentEncoding != "gzip" {
+		contentType := r.Header.Get("Content-Type")
+		if !strings.Contains(contentType, "text/plain") && contentType != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
 
 	body, err := io.ReadAll(r.Body)
