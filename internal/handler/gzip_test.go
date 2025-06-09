@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/MikhailRaia/url-shortener/internal/middleware"
+	"github.com/MikhailRaia/url-shortener/internal/model"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -25,6 +26,17 @@ func (m *MockGzipURLService) GetOriginalURL(id string) (string, bool) {
 		return "https://example.com", true
 	}
 	return "", false
+}
+
+func (m *MockGzipURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
+	result := make([]model.BatchResponseItem, 0, len(items))
+	for _, item := range items {
+		result = append(result, model.BatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      "http://localhost:8080/batch" + item.CorrelationID,
+		})
+	}
+	return result, nil
 }
 
 func TestGzipCompression(t *testing.T) {
