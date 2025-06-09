@@ -28,7 +28,7 @@ func (m *MockGzipURLService) GetOriginalURL(id string) (string, bool) {
 }
 
 func TestGzipCompression(t *testing.T) {
-	h := NewHandler(&MockGzipURLService{})
+	h := NewHandler(&MockGzipURLService{}, nil)
 
 	r := chi.NewRouter()
 	r.Use(middleware.GzipReader)
@@ -76,7 +76,7 @@ func TestGzipCompression(t *testing.T) {
 }
 
 func TestGzipDecompression(t *testing.T) {
-	h := NewHandler(&MockGzipURLService{})
+	h := NewHandler(&MockGzipURLService{}, nil)
 
 	r := chi.NewRouter()
 	r.Use(middleware.GzipReader)
@@ -117,7 +117,7 @@ func TestGzipDecompression(t *testing.T) {
 }
 
 func TestTextPlainGzipCompression(t *testing.T) {
-	h := NewHandler(&MockGzipURLService{})
+	h := NewHandler(&MockGzipURLService{}, nil)
 
 	r := chi.NewRouter()
 	r.Use(middleware.GzipReader)
