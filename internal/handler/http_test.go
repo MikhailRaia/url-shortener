@@ -75,7 +75,7 @@ func TestHandler_handleShorten(t *testing.T) {
 				},
 			}
 
-			handler := NewHandler(mockService)
+			handler := NewHandler(mockService, nil)
 
 			req := httptest.NewRequest(tt.requestMethod, tt.requestURL, bytes.NewBufferString(tt.requestBody))
 			if tt.contentType != "" {
@@ -132,7 +132,7 @@ func TestHandler_handleRedirect(t *testing.T) {
 				},
 			}
 
-			handler := NewHandler(mockService)
+			handler := NewHandler(mockService, nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/"+tt.urlID, nil)
 
@@ -160,7 +160,7 @@ func TestHandler_handleRedirect(t *testing.T) {
 
 func TestHandler_RegisterRoutes(t *testing.T) {
 	mockService := &mockURLService{}
-	handler := NewHandler(mockService)
+	handler := NewHandler(mockService, nil)
 
 	router := handler.RegisterRoutes()
 	if router == nil {

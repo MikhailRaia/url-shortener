@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -16,13 +17,19 @@ type URLService interface {
 	GetOriginalURL(id string) (string, bool)
 }
 
-type Handler struct {
-	urlService URLService
+type DBPinger interface {
+	Ping(ctx context.Context) error
 }
 
-func NewHandler(urlService URLService) *Handler {
+type Handler struct {
+	urlService URLService
+	dbPinger   DBPinger
+}
+
+func NewHandler(urlService URLService, dbPinger DBPinger) *Handler {
 	return &Handler{
 		urlService: urlService,
+		dbPinger:   dbPinger,
 	}
 }
 
@@ -41,6 +48,7 @@ func (h *Handler) RegisterRoutes() http.Handler {
 	r.Post("/", h.handleShorten)
 	r.Post("/api/shorten", h.HandleShortenJSON)
 	r.Get("/{id}", h.handleRedirect)
+	r.Get("/ping", h.handlePing)
 
 	return r
 }
@@ -100,4 +108,19 @@ func (h *Handler) handleRedirect(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Location", originalURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func (h *Handler) handlePing(w http.ResponseWriter, r *http.Request) {
+	if h.dbPinger == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	err := h.dbPinger.Ping(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
