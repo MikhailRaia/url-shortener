@@ -7,11 +7,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 )
 
 type MockURLService struct {
 	ShortenURLFunc     func(originalURL string) (string, error)
 	GetOriginalURLFunc func(id string) (string, bool)
+	ShortenBatchFunc   func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
 }
 
 func (m *MockURLService) ShortenURL(originalURL string) (string, error) {
@@ -20,6 +24,13 @@ func (m *MockURLService) ShortenURL(originalURL string) (string, error) {
 
 func (m *MockURLService) GetOriginalURL(id string) (string, bool) {
 	return m.GetOriginalURLFunc(id)
+}
+
+func (m *MockURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
+	if m.ShortenBatchFunc != nil {
+		return m.ShortenBatchFunc(items)
+	}
+	return []model.BatchResponseItem{}, nil
 }
 
 func TestHandleShortenJSON(t *testing.T) {
@@ -88,6 +99,20 @@ func TestHandleShortenJSON(t *testing.T) {
 			},
 			expectedStatus:   http.StatusInternalServerError,
 			expectedResponse: nil,
+		},
+		{
+			name: "URL already exists",
+			requestBody: ShortenRequest{
+				URL: "https://practicum.yandex.ru",
+			},
+			contentType: "application/json",
+			mockShortenURLFunc: func(originalURL string) (string, error) {
+				return "http://localhost:8080/existing123", storage.ErrURLExists
+			},
+			expectedStatus: http.StatusConflict,
+			expectedResponse: &ShortenResponse{
+				Result: "http://localhost:8080/existing123",
+			},
 		},
 	}
 

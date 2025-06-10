@@ -8,12 +8,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
 
 type mockURLService struct {
 	shortenURLFunc     func(originalURL string) (string, error)
 	getOriginalURLFunc func(id string) (string, bool)
+	shortenBatchFunc   func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
 }
 
 func (m *mockURLService) ShortenURL(originalURL string) (string, error) {
@@ -22,6 +25,14 @@ func (m *mockURLService) ShortenURL(originalURL string) (string, error) {
 
 func (m *mockURLService) GetOriginalURL(id string) (string, bool) {
 	return m.getOriginalURLFunc(id)
+}
+
+func (m *mockURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
+	if m.shortenBatchFunc != nil {
+		return m.shortenBatchFunc(items)
+	}
+	// Возвращаем пустой результат, если функция не определена
+	return []model.BatchResponseItem{}, nil
 }
 
 func TestHandler_handleShorten(t *testing.T) {
@@ -65,6 +76,17 @@ func TestHandler_handleShorten(t *testing.T) {
 			wantStatus:    http.StatusBadRequest,
 			wantBody:      "",
 		},
+		{
+			name:           "URL already exists",
+			requestURL:     "/",
+			requestMethod:  http.MethodPost,
+			requestBody:    "https://example.com",
+			contentType:    "text/plain",
+			mockShortenURL: "http://localhost:8080/existing123",
+			mockShortenErr: storage.ErrURLExists,
+			wantStatus:     http.StatusConflict,
+			wantBody:       "http://localhost:8080/existing123",
+		},
 	}
 
 	for _, tt := range tests {
@@ -75,7 +97,7 @@ func TestHandler_handleShorten(t *testing.T) {
 				},
 			}
 
-			handler := NewHandler(mockService)
+			handler := NewHandler(mockService, nil)
 
 			req := httptest.NewRequest(tt.requestMethod, tt.requestURL, bytes.NewBufferString(tt.requestBody))
 			if tt.contentType != "" {
@@ -132,7 +154,7 @@ func TestHandler_handleRedirect(t *testing.T) {
 				},
 			}
 
-			handler := NewHandler(mockService)
+			handler := NewHandler(mockService, nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/"+tt.urlID, nil)
 
@@ -160,7 +182,7 @@ func TestHandler_handleRedirect(t *testing.T) {
 
 func TestHandler_RegisterRoutes(t *testing.T) {
 	mockService := &mockURLService{}
-	handler := NewHandler(mockService)
+	handler := NewHandler(mockService, nil)
 
 	router := handler.RegisterRoutes()
 	if router == nil {

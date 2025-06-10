@@ -2,9 +2,12 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 )
 
 type ShortenRequest struct {
@@ -49,6 +52,23 @@ func (h *Handler) HandleShortenJSON(w http.ResponseWriter, r *http.Request) {
 
 	shortenedURL, err := h.urlService.ShortenURL(request.URL)
 	if err != nil {
+		if errors.Is(err, storage.ErrURLExists) {
+			response := ShortenResponse{
+				Result: shortenedURL,
+			}
+
+			responseJSON, err := json.Marshal(response)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			w.Write(responseJSON)
+			return
+		}
+
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
