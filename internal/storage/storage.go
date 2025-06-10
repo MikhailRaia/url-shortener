@@ -1,6 +1,12 @@
 package storage
 
-import "github.com/MikhailRaia/url-shortener/internal/model"
+import (
+	"errors"
+
+	"github.com/MikhailRaia/url-shortener/internal/model"
+)
+
+var ErrURLExists = errors.New("url already exists")
 
 type URLStorage interface {
 	// Save сохраняет один URL и возвращает его идентификатор

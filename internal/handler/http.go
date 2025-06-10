@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/logger"
 	"github.com/MikhailRaia/url-shortener/internal/middleware"
 	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
@@ -88,6 +90,13 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 
 	shortenedURL, err := h.urlService.ShortenURL(originalURL)
 	if err != nil {
+		if errors.Is(err, storage.ErrURLExists) {
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(shortenedURL))
+			return
+		}
+
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -129,16 +138,13 @@ func (h *Handler) handlePing(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleShortenBatch обрабатывает запросы на пакетное сокращение URL
 func (h *Handler) handleShortenBatch(w http.ResponseWriter, r *http.Request) {
-	// Проверяем Content-Type
 	contentType := r.Header.Get("Content-Type")
 	if !strings.Contains(contentType, "application/json") {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	// Читаем тело запроса
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -146,40 +152,34 @@ func (h *Handler) handleShortenBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	// Проверяем, что тело запроса не пустое
 	if len(body) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	// Десериализуем JSON
 	var items []model.BatchRequestItem
 	if err := json.Unmarshal(body, &items); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	// Проверяем, что запрос не пустой
 	if len(items) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	// Обрабатываем пакетный запрос
 	result, err := h.urlService.ShortenBatch(items)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// Сериализуем ответ
 	response, err := json.Marshal(result)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// Отправляем ответ
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	w.Write(response)

@@ -27,7 +27,6 @@ func NewApp(cfg *config.Config) *App {
 	var dbStorage *postgres.Storage
 	var err error
 
-	// Если указан DSN для базы данных, пытаемся подключиться к PostgreSQL
 	if cfg.DatabaseDSN != "" {
 		dbStorage, err = postgres.NewStorage(cfg.DatabaseDSN)
 		if err != nil {
@@ -38,7 +37,6 @@ func NewApp(cfg *config.Config) *App {
 		}
 	}
 
-	// Если не удалось подключиться к PostgreSQL или DSN не указан, используем файловое хранилище
 	if urlStorage == nil && cfg.FileStoragePath != "" {
 		urlStorage, err = file.NewStorage(cfg.FileStoragePath)
 		if err != nil {
@@ -49,8 +47,6 @@ func NewApp(cfg *config.Config) *App {
 		}
 	}
 
-	// Если не удалось подключиться к PostgreSQL и файловое хранилище не указано или не удалось инициализировать,
-	// используем хранилище в памяти
 	if urlStorage == nil {
 		urlStorage = memory.NewStorage()
 		log.Info().Msg("Using memory storage")
@@ -58,7 +54,6 @@ func NewApp(cfg *config.Config) *App {
 
 	urlService := service.NewURLService(urlStorage, cfg.BaseURL)
 
-	// Передаем dbStorage как реализацию DBPinger, может быть nil, если PostgreSQL не используется
 	httpHandler := handler.NewHandler(urlService, dbStorage)
 
 	return &App{
@@ -71,7 +66,6 @@ func NewApp(cfg *config.Config) *App {
 func (a *App) Run() error {
 	log.Info().Str("url", a.config.BaseURL).Str("address", a.config.ServerAddress).Msg("Starting server")
 
-	// Закрываем соединение с базой данных при завершении работы
 	if a.dbStorage != nil {
 		defer a.dbStorage.Close()
 	}
