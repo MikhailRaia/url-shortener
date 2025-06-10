@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 
 	"github.com/MikhailRaia/url-shortener/internal/generator"
 	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
@@ -26,7 +29,6 @@ func NewStorage(dsn string) (*Storage, error) {
 		return nil, err
 	}
 
-	// Проверяем соединение
 	if err := pool.Ping(ctx); err != nil {
 		return nil, err
 	}
@@ -35,7 +37,6 @@ func NewStorage(dsn string) (*Storage, error) {
 		pool: pool,
 	}
 
-	// Создаем таблицу, если она не существует
 	if err := storage.createTable(ctx); err != nil {
 		return nil, err
 	}
@@ -44,7 +45,6 @@ func NewStorage(dsn string) (*Storage, error) {
 }
 
 func (s *Storage) createTable(ctx context.Context) error {
-	// Создаем таблицу, если она не существует
 	createTableQuery := `
 		CREATE TABLE IF NOT EXISTS urls (
 			id VARCHAR(12) PRIMARY KEY,
@@ -57,26 +57,38 @@ func (s *Storage) createTable(ctx context.Context) error {
 		return err
 	}
 
-	// Убедимся, что у нас есть индекс для быстрого поиска по id
-	// (хотя PRIMARY KEY уже создает индекс, но явно указываем для полноты)
 	createIndexQuery := `
 		CREATE INDEX IF NOT EXISTS idx_urls_id ON urls(id);
 	`
 
-	_, err := s.pool.Exec(ctx, createIndexQuery)
+	if _, err := s.pool.Exec(ctx, createIndexQuery); err != nil {
+		return err
+	}
+
+	createUniqueIndexQuery := `
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_urls_original_url ON urls(original_url);
+	`
+
+	_, err := s.pool.Exec(ctx, createUniqueIndexQuery)
 	return err
 }
 
 func (s *Storage) Save(originalURL string) (string, error) {
 	ctx := context.Background()
 
-	// Генерируем ID для сокращенного URL
+	var existingID string
+	err := s.pool.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", originalURL).Scan(&existingID)
+	if err == nil {
+		return existingID, storage.ErrURLExists
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("error checking if URL exists: %w", err)
+	}
+
 	id, err := generator.GenerateID(8)
 	if err != nil {
 		return "", fmt.Errorf("error generating ID: %w", err)
 	}
 
-	// Проверяем, существует ли URL с таким ID
 	var exists bool
 	for {
 		err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM urls WHERE id = $1)", id).Scan(&exists)
@@ -88,16 +100,20 @@ func (s *Storage) Save(originalURL string) (string, error) {
 			break
 		}
 
-		// Если ID уже существует, генерируем новый
 		id, err = generator.GenerateID(8)
 		if err != nil {
 			return "", fmt.Errorf("error generating new ID: %w", err)
 		}
 	}
 
-	// Сохраняем URL в базу данных
 	_, err = s.pool.Exec(ctx, "INSERT INTO urls (id, original_url) VALUES ($1, $2)", id, originalURL)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			if err := s.pool.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", originalURL).Scan(&existingID); err == nil {
+				return existingID, storage.ErrURLExists
+			}
+		}
 		return "", fmt.Errorf("error inserting URL into database: %w", err)
 	}
 
@@ -111,10 +127,8 @@ func (s *Storage) Get(id string) (string, bool) {
 	err := s.pool.QueryRow(ctx, "SELECT original_url FROM urls WHERE id = $1", id).Scan(&originalURL)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// URL не найден
 			return "", false
 		}
-		// Произошла ошибка при выполнении запроса
 		fmt.Printf("Error querying database: %v\n", err)
 		return "", false
 	}
@@ -130,15 +144,21 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 	ctx := context.Background()
 	result := make(map[string]string)
 
-	// Для каждого URL генерируем ID и сохраняем в базу
 	for _, item := range items {
-		// Генерируем ID для сокращенного URL
+		var existingID string
+		err := s.pool.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", item.OriginalURL).Scan(&existingID)
+		if err == nil {
+			result[item.CorrelationID] = existingID
+			continue
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("error checking if URL exists: %w", err)
+		}
+
 		id, err := generator.GenerateID(8)
 		if err != nil {
 			return nil, fmt.Errorf("error generating ID: %w", err)
 		}
 
-		// Проверяем, существует ли URL с таким ID
 		var exists bool
 		for {
 			err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM urls WHERE id = $1)", id).Scan(&exists)
@@ -150,21 +170,25 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 				break
 			}
 
-			// Если ID уже существует, генерируем новый
 			id, err = generator.GenerateID(8)
 			if err != nil {
 				return nil, fmt.Errorf("error generating new ID: %w", err)
 			}
 		}
 
-		// Сохраняем URL в базу данных
 		_, err = s.pool.Exec(ctx, "INSERT INTO urls (id, original_url) VALUES ($1, $2)",
 			id, item.OriginalURL)
 		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+				if err := s.pool.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", item.OriginalURL).Scan(&existingID); err == nil {
+					result[item.CorrelationID] = existingID
+					continue
+				}
+			}
 			return nil, fmt.Errorf("error inserting URL into database: %w", err)
 		}
 
-		// Добавляем ID в результат
 		result[item.CorrelationID] = id
 	}
 

@@ -11,14 +11,16 @@ import (
 
 	"github.com/MikhailRaia/url-shortener/internal/generator"
 	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 )
 
 type Storage struct {
-	filePath    string
-	urlMap      map[string]string
-	idCounter   int
-	mutex       sync.RWMutex
-	fileWriteMu sync.Mutex
+	filePath      string
+	urlMap        map[string]string
+	reverseURLMap map[string]string
+	idCounter     int
+	mutex         sync.RWMutex
+	fileWriteMu   sync.Mutex
 }
 
 func NewStorage(filePath string) (*Storage, error) {
@@ -28,9 +30,10 @@ func NewStorage(filePath string) (*Storage, error) {
 	}
 
 	storage := &Storage{
-		filePath:  filePath,
-		urlMap:    make(map[string]string),
-		idCounter: 0,
+		filePath:      filePath,
+		urlMap:        make(map[string]string),
+		reverseURLMap: make(map[string]string),
+		idCounter:     0,
 	}
 
 	if err := storage.loadFromFile(); err != nil {
@@ -41,15 +44,29 @@ func NewStorage(filePath string) (*Storage, error) {
 }
 
 func (s *Storage) Save(originalURL string) (string, error) {
+	s.mutex.RLock()
+	existingID, exists := s.reverseURLMap[originalURL]
+	s.mutex.RUnlock()
+
+	if exists {
+		return existingID, storage.ErrURLExists
+	}
+
 	id, err := generator.GenerateID(8)
 	if err != nil {
 		return "", err
 	}
 
 	s.mutex.Lock()
+	if existingID, exists := s.reverseURLMap[originalURL]; exists {
+		s.mutex.Unlock()
+		return existingID, storage.ErrURLExists
+	}
+
 	s.idCounter++
 	uuid := strconv.Itoa(s.idCounter)
 	s.urlMap[id] = originalURL
+	s.reverseURLMap[originalURL] = id
 	s.mutex.Unlock()
 
 	record := model.URLRecord{
@@ -77,15 +94,31 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 	result := make(map[string]string)
 
 	for _, item := range items {
+		s.mutex.RLock()
+		existingID, exists := s.reverseURLMap[item.OriginalURL]
+		s.mutex.RUnlock()
+
+		if exists {
+			result[item.CorrelationID] = existingID
+			continue
+		}
+
 		id, err := generator.GenerateID(8)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate ID: %w", err)
 		}
 
 		s.mutex.Lock()
+		if existingID, exists := s.reverseURLMap[item.OriginalURL]; exists {
+			s.mutex.Unlock()
+			result[item.CorrelationID] = existingID
+			continue
+		}
+
 		s.idCounter++
 		uuid := strconv.Itoa(s.idCounter)
 		s.urlMap[id] = item.OriginalURL
+		s.reverseURLMap[item.OriginalURL] = id
 		s.mutex.Unlock()
 
 		record := model.URLRecord{

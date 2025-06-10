@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 )
 
 type MockURLService struct {
@@ -29,7 +30,6 @@ func (m *MockURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.B
 	if m.ShortenBatchFunc != nil {
 		return m.ShortenBatchFunc(items)
 	}
-	// Возвращаем пустой результат, если функция не определена
 	return []model.BatchResponseItem{}, nil
 }
 
@@ -99,6 +99,20 @@ func TestHandleShortenJSON(t *testing.T) {
 			},
 			expectedStatus:   http.StatusInternalServerError,
 			expectedResponse: nil,
+		},
+		{
+			name: "URL already exists",
+			requestBody: ShortenRequest{
+				URL: "https://practicum.yandex.ru",
+			},
+			contentType: "application/json",
+			mockShortenURLFunc: func(originalURL string) (string, error) {
+				return "http://localhost:8080/existing123", storage.ErrURLExists
+			},
+			expectedStatus: http.StatusConflict,
+			expectedResponse: &ShortenResponse{
+				Result: "http://localhost:8080/existing123",
+			},
 		},
 	}
 

@@ -10,7 +10,6 @@ import (
 )
 
 func InitLogger() {
-	// Настраиваем логгер с уровнем Info и временной меткой
 	log.Logger = zerolog.New(os.Stdout).
 		With().
 		Timestamp().
@@ -20,25 +19,20 @@ func InitLogger() {
 
 func RequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Запоминаем время начала обработки запроса
 		start := time.Now()
 
 		ww := NewResponseWriter(w)
 
-		// Обрабатываем запрос
 		next.ServeHTTP(ww, r)
 
-		// Вычисляем время выполнения запроса
 		duration := time.Since(start)
 
-		// Логируем информацию о запросе
 		log.Info().
 			Str("method", r.Method).
 			Str("uri", r.RequestURI).
 			Dur("duration", duration).
 			Msg("Request processed")
 
-		// Логируем информацию об ответе
 		log.Info().
 			Int("status", ww.Status()).
 			Int("size", ww.Size()).

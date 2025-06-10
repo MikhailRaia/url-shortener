@@ -43,7 +43,6 @@ func TestHandleShortenBatch(t *testing.T) {
 	r := chi.NewRouter()
 	r.Post("/api/shorten/batch", h.handleShortenBatch)
 
-	// Создаем тестовый запрос
 	items := []model.BatchRequestItem{
 		{
 			CorrelationID: "1",
@@ -64,15 +63,12 @@ func TestHandleShortenBatch(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
-	// Проверяем статус ответа
 	assert.Equal(t, http.StatusCreated, rec.Code)
 
-	// Проверяем формат ответа
 	var response []model.BatchResponseItem
 	err = json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
 
-	// Проверяем данные ответа
 	assert.Len(t, response, 2)
 	assert.Equal(t, "1", response[0].CorrelationID)
 	assert.Equal(t, "http://localhost:8080/batch1", response[0].ShortURL)
@@ -86,7 +82,6 @@ func TestHandleShortenBatchInvalidJSON(t *testing.T) {
 	r := chi.NewRouter()
 	r.Post("/api/shorten/batch", h.handleShortenBatch)
 
-	// Создаем некорректный JSON
 	invalidJSON := `[{"correlation_id": "1", "original_url": "https://example.com"},`
 
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", bytes.NewBufferString(invalidJSON))
@@ -95,7 +90,6 @@ func TestHandleShortenBatchInvalidJSON(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
-	// Проверяем, что сервер отвечает ошибкой
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
@@ -105,7 +99,6 @@ func TestHandleShortenBatchEmptyRequest(t *testing.T) {
 	r := chi.NewRouter()
 	r.Post("/api/shorten/batch", h.handleShortenBatch)
 
-	// Создаем пустой массив
 	emptyArray := "[]"
 
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", bytes.NewBufferString(emptyArray))
@@ -114,6 +107,5 @@ func TestHandleShortenBatchEmptyRequest(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
-	// Проверяем, что сервер отвечает ошибкой на пустой массив
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }

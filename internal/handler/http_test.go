@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -74,6 +75,17 @@ func TestHandler_handleShorten(t *testing.T) {
 			contentType:   "application/json",
 			wantStatus:    http.StatusBadRequest,
 			wantBody:      "",
+		},
+		{
+			name:           "URL already exists",
+			requestURL:     "/",
+			requestMethod:  http.MethodPost,
+			requestBody:    "https://example.com",
+			contentType:    "text/plain",
+			mockShortenURL: "http://localhost:8080/existing123",
+			mockShortenErr: storage.ErrURLExists,
+			wantStatus:     http.StatusConflict,
+			wantBody:       "http://localhost:8080/existing123",
 		},
 	}
 
