@@ -21,6 +21,10 @@ func (m *MockGzipURLService) ShortenURL(originalURL string) (string, error) {
 	return "http://localhost:8080/abc123", nil
 }
 
+func (m *MockGzipURLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
+	return "http://localhost:8080/abc123", nil
+}
+
 func (m *MockGzipURLService) GetOriginalURL(id string) (string, bool) {
 	if id == "abc123" {
 		return "https://example.com", true
@@ -39,6 +43,21 @@ func (m *MockGzipURLService) ShortenBatch(items []model.BatchRequestItem) ([]mod
 	return result, nil
 }
 
+func (m *MockGzipURLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
+	result := make([]model.BatchResponseItem, 0, len(items))
+	for _, item := range items {
+		result = append(result, model.BatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      "http://localhost:8080/batch" + item.CorrelationID,
+		})
+	}
+	return result, nil
+}
+
+func (m *MockGzipURLService) GetUserURLs(userID string) ([]model.UserURL, error) {
+	return []model.UserURL{}, nil
+}
+
 func TestGzipCompression(t *testing.T) {
 	h := NewHandler(&MockGzipURLService{}, nil)
 
@@ -52,7 +71,7 @@ func TestGzipCompression(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewBuffer(reqBodyBytes))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept-Encoding", "gzip") // Клиент поддерживает gzip
+	req.Header.Set("Accept-Encoding", "gzip")
 
 	rec := httptest.NewRecorder()
 

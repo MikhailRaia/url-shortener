@@ -58,3 +58,57 @@ func (s *URLService) ShortenBatch(items []model.BatchRequestItem) ([]model.Batch
 
 	return result, nil
 }
+
+func (s *URLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
+	id, err := s.storage.SaveWithUser(originalURL, userID)
+	if err != nil {
+		if err == storage.ErrURLExists && id != "" {
+			shortenedURL := fmt.Sprintf("%s/%s", s.baseURL, id)
+			return shortenedURL, err
+		}
+		return "", err
+	}
+
+	shortenedURL := fmt.Sprintf("%s/%s", s.baseURL, id)
+	return shortenedURL, nil
+}
+
+func (s *URLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
+	idMap, err := s.storage.SaveBatchWithUser(items, userID)
+	if err != nil {
+		return nil, fmt.Errorf("error saving batch: %w", err)
+	}
+
+	result := make([]model.BatchResponseItem, 0, len(items))
+	for _, item := range items {
+		id, ok := idMap[item.CorrelationID]
+		if !ok {
+			continue
+		}
+
+		shortURL := fmt.Sprintf("%s/%s", s.baseURL, id)
+		result = append(result, model.BatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      shortURL,
+		})
+	}
+
+	return result, nil
+}
+
+func (s *URLService) GetUserURLs(userID string) ([]model.UserURL, error) {
+	urls, err := s.storage.GetUserURLs(userID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting user URLs: %w", err)
+	}
+
+	result := make([]model.UserURL, len(urls))
+	for i, url := range urls {
+		result[i] = model.UserURL{
+			ShortURL:    fmt.Sprintf("%s/%s", s.baseURL, url.ShortURL),
+			OriginalURL: url.OriginalURL,
+		}
+	}
+
+	return result, nil
+}

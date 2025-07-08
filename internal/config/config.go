@@ -11,6 +11,7 @@ type Config struct {
 	BaseURL         string
 	FileStoragePath string
 	DatabaseDSN     string
+	JWTSecretKey    string
 }
 
 func NewConfig() *Config {
@@ -19,12 +20,14 @@ func NewConfig() *Config {
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: getDefaultStoragePath(),
 		DatabaseDSN:     "",
+		JWTSecretKey:    "default-secret-key-change-in-production",
 	}
 
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address (e.g. localhost:8888)")
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "Base URL for shortened URLs (e.g. http://localhost:8000)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "Path to file storage")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database connection string (e.g. postgres://username:password@localhost:5432/database_name)")
+	flag.StringVar(&cfg.JWTSecretKey, "s", cfg.JWTSecretKey, "JWT secret key for signing tokens")
 
 	flag.Parse()
 
@@ -42,6 +45,10 @@ func NewConfig() *Config {
 
 	if envDatabaseDSN := os.Getenv("DATABASE_DSN"); envDatabaseDSN != "" {
 		cfg.DatabaseDSN = envDatabaseDSN
+	}
+
+	if envJWTSecretKey := os.Getenv("JWT_SECRET_KEY"); envJWTSecretKey != "" {
+		cfg.JWTSecretKey = envJWTSecretKey
 	}
 
 	return cfg

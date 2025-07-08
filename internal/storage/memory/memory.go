@@ -8,13 +8,15 @@ import (
 )
 
 type Storage struct {
-	urlMap map[string]string
-	mutex  sync.RWMutex
+	urlMap   map[string]string
+	userURLs map[string][]model.URL
+	mutex    sync.RWMutex
 }
 
 func NewStorage() *Storage {
 	return &Storage{
-		urlMap: make(map[string]string),
+		urlMap:   make(map[string]string),
+		userURLs: make(map[string][]model.URL),
 	}
 }
 
@@ -53,6 +55,73 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 
 		s.urlMap[id] = item.OriginalURL
 		result[item.CorrelationID] = id
+	}
+
+	return result, nil
+}
+
+func (s *Storage) SaveWithUser(originalURL, userID string) (string, error) {
+	id, err := generator.GenerateID(8)
+	if err != nil {
+		return "", err
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.urlMap[id] = originalURL
+
+	url := model.URL{
+		ID:          id,
+		OriginalURL: originalURL,
+		UserID:      userID,
+	}
+	s.userURLs[userID] = append(s.userURLs[userID], url)
+
+	return id, nil
+}
+
+func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID string) (map[string]string, error) {
+	result := make(map[string]string)
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for _, item := range items {
+		id, err := generator.GenerateID(8)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate ID: %w", err)
+		}
+
+		s.urlMap[id] = item.OriginalURL
+		result[item.CorrelationID] = id
+
+		url := model.URL{
+			ID:          id,
+			OriginalURL: item.OriginalURL,
+			UserID:      userID,
+		}
+		s.userURLs[userID] = append(s.userURLs[userID], url)
+	}
+
+	return result, nil
+}
+
+func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	urls, exists := s.userURLs[userID]
+	if !exists {
+		return []model.UserURL{}, nil
+	}
+
+	result := make([]model.UserURL, len(urls))
+	for i, url := range urls {
+		result[i] = model.UserURL{
+			ShortURL:    url.ID,
+			OriginalURL: url.OriginalURL,
+		}
 	}
 
 	return result, nil
