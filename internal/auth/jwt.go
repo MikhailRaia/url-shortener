@@ -1,15 +1,11 @@
 package auth
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"strings"
+	"fmt"
 	"time"
 
-	"github.com/MikhailRaia/url-shortener/internal/generator"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var (
@@ -19,7 +15,7 @@ var (
 
 type Claims struct {
 	UserID string `json:"user_id"`
-	Exp    int64  `json:"exp"`
+	jwt.RegisteredClaims
 }
 
 type JWTService struct {
@@ -33,72 +29,47 @@ func NewJWTService(secretKey string) *JWTService {
 }
 
 func (j *JWTService) GenerateToken(userID string) (string, error) {
-	header := map[string]interface{}{
-		"alg": "HS256",
-		"typ": "JWT",
-	}
-
 	claims := Claims{
 		UserID: userID,
-		Exp:    time.Now().Add(24 * time.Hour).Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
 
-	headerJSON, err := json.Marshal(header)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(j.secretKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to sign token: %w", err)
 	}
 
-	claimsJSON, err := json.Marshal(claims)
-	if err != nil {
-		return "", err
-	}
-
-	headerEncoded := base64.RawURLEncoding.EncodeToString(headerJSON)
-	claimsEncoded := base64.RawURLEncoding.EncodeToString(claimsJSON)
-
-	message := headerEncoded + "." + claimsEncoded
-	signature := j.sign(message)
-
-	return message + "." + signature, nil
+	return tokenString, nil
 }
 
 func (j *JWTService) ValidateToken(tokenString string) (*Claims, error) {
-	parts := strings.Split(tokenString, ".")
-	if len(parts) != 3 {
-		return nil, ErrInvalidToken
-	}
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// Проверяем, что используется именно HS256
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return j.secretKey, nil
+	})
 
-	headerEncoded, claimsEncoded, signature := parts[0], parts[1], parts[2]
-
-	message := headerEncoded + "." + claimsEncoded
-	expectedSignature := j.sign(message)
-	if signature != expectedSignature {
-		return nil, ErrInvalidToken
-	}
-
-	claimsJSON, err := base64.RawURLEncoding.DecodeString(claimsEncoded)
 	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, ErrExpiredToken
+		}
 		return nil, ErrInvalidToken
 	}
 
-	var claims Claims
-	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
+	if !token.Valid {
 		return nil, ErrInvalidToken
 	}
 
-	if time.Now().Unix() > claims.Exp {
-		return nil, ErrExpiredToken
+	claims, ok := token.Claims.(*Claims)
+	if !ok {
+		return nil, ErrInvalidToken
 	}
 
-	return &claims, nil
-}
-
-func (j *JWTService) sign(message string) string {
-	h := hmac.New(sha256.New, j.secretKey)
-	h.Write([]byte(message))
-	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-}
-
-func (j *JWTService) GenerateUserID() (string, error) {
-	return generator.GenerateID(16)
+	return claims, nil
 }

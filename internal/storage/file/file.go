@@ -19,6 +19,7 @@ type Storage struct {
 	urlMap        map[string]string
 	reverseURLMap map[string]string
 	userURLs      map[string][]model.URL
+	deletedMap    map[string]bool
 	idCounter     int
 	mutex         sync.RWMutex
 	fileWriteMu   sync.Mutex
@@ -35,6 +36,7 @@ func NewStorage(filePath string) (*Storage, error) {
 		urlMap:        make(map[string]string),
 		reverseURLMap: make(map[string]string),
 		userURLs:      make(map[string][]model.URL),
+		deletedMap:    make(map[string]bool),
 		idCounter:     0,
 	}
 
@@ -46,23 +48,16 @@ func NewStorage(filePath string) (*Storage, error) {
 }
 
 func (s *Storage) Save(originalURL string) (string, error) {
-	s.mutex.RLock()
-	existingID, exists := s.reverseURLMap[originalURL]
-	s.mutex.RUnlock()
-
-	if exists {
+	s.mutex.Lock()
+	if existingID, exists := s.reverseURLMap[originalURL]; exists {
+		s.mutex.Unlock()
 		return existingID, storage.ErrURLExists
 	}
 
 	id, err := generator.GenerateID(8)
 	if err != nil {
-		return "", err
-	}
-
-	s.mutex.Lock()
-	if existingID, exists := s.reverseURLMap[originalURL]; exists {
 		s.mutex.Unlock()
-		return existingID, storage.ErrURLExists
+		return "", err
 	}
 
 	s.idCounter++
@@ -76,6 +71,7 @@ func (s *Storage) Save(originalURL string) (string, error) {
 		ShortURL:    id,
 		OriginalURL: originalURL,
 		UserID:      "",
+		IsDeleted:   false,
 	}
 
 	if err := s.saveRecordToFile(record); err != nil {
@@ -90,32 +86,48 @@ func (s *Storage) Get(id string) (string, bool) {
 	defer s.mutex.RUnlock()
 
 	originalURL, found := s.urlMap[id]
-	return originalURL, found
+	if !found {
+		return "", false
+	}
+
+	if s.deletedMap[id] {
+		return "", false
+	}
+
+	return originalURL, true
+}
+
+func (s *Storage) GetWithDeletedStatus(id string) (string, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	originalURL, found := s.urlMap[id]
+	if !found {
+		return "", nil
+	}
+
+	if s.deletedMap[id] {
+		return "", storage.ErrURLDeleted
+	}
+
+	return originalURL, nil
 }
 
 func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, error) {
 	result := make(map[string]string)
 
 	for _, item := range items {
-		s.mutex.RLock()
-		existingID, exists := s.reverseURLMap[item.OriginalURL]
-		s.mutex.RUnlock()
-
-		if exists {
+		s.mutex.Lock()
+		if existingID, exists := s.reverseURLMap[item.OriginalURL]; exists {
+			s.mutex.Unlock()
 			result[item.CorrelationID] = existingID
 			continue
 		}
 
 		id, err := generator.GenerateID(8)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate ID: %w", err)
-		}
-
-		s.mutex.Lock()
-		if existingID, exists := s.reverseURLMap[item.OriginalURL]; exists {
 			s.mutex.Unlock()
-			result[item.CorrelationID] = existingID
-			continue
+			return nil, fmt.Errorf("failed to generate ID: %w", err)
 		}
 
 		s.idCounter++
@@ -129,6 +141,7 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 			ShortURL:    id,
 			OriginalURL: item.OriginalURL,
 			UserID:      "",
+			IsDeleted:   false,
 		}
 
 		if err := s.saveRecordToFile(record); err != nil {
@@ -164,6 +177,7 @@ func (s *Storage) loadFromFile() error {
 
 		s.urlMap[record.ShortURL] = record.OriginalURL
 		s.reverseURLMap[record.OriginalURL] = record.ShortURL
+		s.deletedMap[record.ShortURL] = record.IsDeleted
 
 		if record.UserID != "" {
 			url := model.URL{
@@ -210,23 +224,16 @@ func (s *Storage) saveRecordToFile(record model.URLRecord) error {
 }
 
 func (s *Storage) SaveWithUser(originalURL, userID string) (string, error) {
-	s.mutex.RLock()
-	existingID, exists := s.reverseURLMap[originalURL]
-	s.mutex.RUnlock()
-
-	if exists {
+	s.mutex.Lock()
+	if existingID, exists := s.reverseURLMap[originalURL]; exists {
+		s.mutex.Unlock()
 		return existingID, storage.ErrURLExists
 	}
 
 	id, err := generator.GenerateID(8)
 	if err != nil {
-		return "", err
-	}
-
-	s.mutex.Lock()
-	if existingID, exists := s.reverseURLMap[originalURL]; exists {
 		s.mutex.Unlock()
-		return existingID, storage.ErrURLExists
+		return "", err
 	}
 
 	s.idCounter++
@@ -247,6 +254,7 @@ func (s *Storage) SaveWithUser(originalURL, userID string) (string, error) {
 		ShortURL:    id,
 		OriginalURL: originalURL,
 		UserID:      userID,
+		IsDeleted:   false,
 	}
 
 	if err := s.saveRecordToFile(record); err != nil {
@@ -260,25 +268,17 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 	result := make(map[string]string)
 
 	for _, item := range items {
-		s.mutex.RLock()
-		existingID, exists := s.reverseURLMap[item.OriginalURL]
-		s.mutex.RUnlock()
-
-		if exists {
+		s.mutex.Lock()
+		if existingID, exists := s.reverseURLMap[item.OriginalURL]; exists {
+			s.mutex.Unlock()
 			result[item.CorrelationID] = existingID
 			continue
 		}
 
 		id, err := generator.GenerateID(8)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate ID: %w", err)
-		}
-
-		s.mutex.Lock()
-		if existingID, exists := s.reverseURLMap[item.OriginalURL]; exists {
 			s.mutex.Unlock()
-			result[item.CorrelationID] = existingID
-			continue
+			return nil, fmt.Errorf("failed to generate ID: %w", err)
 		}
 
 		s.idCounter++
@@ -299,6 +299,7 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 			ShortURL:    id,
 			OriginalURL: item.OriginalURL,
 			UserID:      userID,
+			IsDeleted:   false,
 		}
 
 		if err := s.saveRecordToFile(record); err != nil {
@@ -320,13 +321,52 @@ func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 		return []model.UserURL{}, nil
 	}
 
-	result := make([]model.UserURL, len(urls))
-	for i, url := range urls {
-		result[i] = model.UserURL{
-			ShortURL:    url.ID,
-			OriginalURL: url.OriginalURL,
+	var result []model.UserURL
+	for _, url := range urls {
+		if !s.deletedMap[url.ID] {
+			result = append(result, model.UserURL{
+				ShortURL:    url.ID,
+				OriginalURL: url.OriginalURL,
+			})
 		}
 	}
 
 	return result, nil
+}
+
+func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	userURLs, exists := s.userURLs[userID]
+	if !exists {
+		return nil
+	}
+
+	userURLSet := make(map[string]bool)
+	for _, url := range userURLs {
+		userURLSet[url.ID] = true
+	}
+
+	for _, urlID := range urlIDs {
+		if userURLSet[urlID] && !s.deletedMap[urlID] {
+			s.deletedMap[urlID] = true
+
+			s.idCounter++
+			uuid := strconv.Itoa(s.idCounter)
+			record := model.URLRecord{
+				UUID:        uuid,
+				ShortURL:    urlID,
+				OriginalURL: s.urlMap[urlID],
+				UserID:      userID,
+				IsDeleted:   true,
+			}
+
+			if err := s.saveRecordToFile(record); err != nil {
+				return fmt.Errorf("failed to save deletion record: %w", err)
+			}
+		}
+	}
+
+	return nil
 }

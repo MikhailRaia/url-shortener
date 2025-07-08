@@ -26,11 +26,11 @@ func NewStorage(dsn string) (*Storage, error) {
 	ctx := context.Background()
 	pool, err := pgxpool.Connect(ctx, dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	storage := &Storage{
@@ -38,7 +38,7 @@ func NewStorage(dsn string) (*Storage, error) {
 	}
 
 	if err := storage.createTable(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create database tables: %w", err)
 	}
 
 	return storage, nil
@@ -50,12 +50,21 @@ func (s *Storage) createTable(ctx context.Context) error {
 			id VARCHAR(12) PRIMARY KEY,
 			original_url TEXT NOT NULL,
 			user_id VARCHAR(32),
+			is_deleted BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 		);
 	`
 
 	if _, err := s.pool.Exec(ctx, createTableQuery); err != nil {
-		return err
+		return fmt.Errorf("failed to create urls table: %w", err)
+	}
+
+	alterTableQuery := `
+		ALTER TABLE urls ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
+	`
+
+	if _, err := s.pool.Exec(ctx, alterTableQuery); err != nil {
+		return fmt.Errorf("failed to alter urls table: %w", err)
 	}
 
 	createIndexQuery := `
@@ -63,15 +72,18 @@ func (s *Storage) createTable(ctx context.Context) error {
 	`
 
 	if _, err := s.pool.Exec(ctx, createIndexQuery); err != nil {
-		return err
+		return fmt.Errorf("failed to create index on id: %w", err)
 	}
 
 	createUniqueIndexQuery := `
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_urls_original_url ON urls(original_url);
 	`
 
-	_, err := s.pool.Exec(ctx, createUniqueIndexQuery)
-	return err
+	if _, err := s.pool.Exec(ctx, createUniqueIndexQuery); err != nil {
+		return fmt.Errorf("failed to create unique index on original_url: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Storage) Save(originalURL string) (string, error) {
@@ -125,7 +137,8 @@ func (s *Storage) Get(id string) (string, bool) {
 	ctx := context.Background()
 
 	var originalURL string
-	err := s.pool.QueryRow(ctx, "SELECT original_url FROM urls WHERE id = $1", id).Scan(&originalURL)
+	var isDeleted bool
+	err := s.pool.QueryRow(ctx, "SELECT original_url, is_deleted FROM urls WHERE id = $1", id).Scan(&originalURL, &isDeleted)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", false
@@ -134,7 +147,31 @@ func (s *Storage) Get(id string) (string, bool) {
 		return "", false
 	}
 
+	if isDeleted {
+		return "", false
+	}
+
 	return originalURL, true
+}
+
+func (s *Storage) GetWithDeletedStatus(id string) (string, error) {
+	ctx := context.Background()
+
+	var originalURL string
+	var isDeleted bool
+	err := s.pool.QueryRow(ctx, "SELECT original_url, is_deleted FROM urls WHERE id = $1", id).Scan(&originalURL, &isDeleted)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
+		}
+		return "", fmt.Errorf("error querying database: %w", err)
+	}
+
+	if isDeleted {
+		return "", storage.ErrURLDeleted
+	}
+
+	return originalURL, nil
 }
 
 func (s *Storage) Ping(ctx context.Context) error {
@@ -143,11 +180,17 @@ func (s *Storage) Ping(ctx context.Context) error {
 
 func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, error) {
 	ctx := context.Background()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error starting transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	result := make(map[string]string)
 
 	for _, item := range items {
 		var existingID string
-		err := s.pool.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", item.OriginalURL).Scan(&existingID)
+		err := tx.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1 FOR UPDATE", item.OriginalURL).Scan(&existingID)
 		if err == nil {
 			result[item.CorrelationID] = existingID
 			continue
@@ -162,7 +205,7 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 
 		var exists bool
 		for {
-			err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM urls WHERE id = $1)", id).Scan(&exists)
+			err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM urls WHERE id = $1)", id).Scan(&exists)
 			if err != nil {
 				return nil, fmt.Errorf("error checking if ID exists: %w", err)
 			}
@@ -177,12 +220,12 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 			}
 		}
 
-		_, err = s.pool.Exec(ctx, "INSERT INTO urls (id, original_url) VALUES ($1, $2)",
+		_, err = tx.Exec(ctx, "INSERT INTO urls (id, original_url) VALUES ($1, $2)",
 			id, item.OriginalURL)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-				if err := s.pool.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", item.OriginalURL).Scan(&existingID); err == nil {
+				if err := tx.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", item.OriginalURL).Scan(&existingID); err == nil {
 					result[item.CorrelationID] = existingID
 					continue
 				}
@@ -191,6 +234,10 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 		}
 
 		result[item.CorrelationID] = id
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("error committing transaction: %w", err)
 	}
 
 	return result, nil
@@ -251,11 +298,17 @@ func (s *Storage) SaveWithUser(originalURL, userID string) (string, error) {
 
 func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID string) (map[string]string, error) {
 	ctx := context.Background()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error starting transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	result := make(map[string]string)
 
 	for _, item := range items {
 		var existingID string
-		err := s.pool.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", item.OriginalURL).Scan(&existingID)
+		err := tx.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1 FOR UPDATE", item.OriginalURL).Scan(&existingID)
 		if err == nil {
 			result[item.CorrelationID] = existingID
 			continue
@@ -270,7 +323,7 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 
 		var exists bool
 		for {
-			err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM urls WHERE id = $1)", id).Scan(&exists)
+			err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM urls WHERE id = $1)", id).Scan(&exists)
 			if err != nil {
 				return nil, fmt.Errorf("error checking if ID exists: %w", err)
 			}
@@ -285,12 +338,12 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 			}
 		}
 
-		_, err = s.pool.Exec(ctx, "INSERT INTO urls (id, original_url, user_id) VALUES ($1, $2, $3)",
+		_, err = tx.Exec(ctx, "INSERT INTO urls (id, original_url, user_id) VALUES ($1, $2, $3)",
 			id, item.OriginalURL, userID)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-				if err := s.pool.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", item.OriginalURL).Scan(&existingID); err == nil {
+				if err := tx.QueryRow(ctx, "SELECT id FROM urls WHERE original_url = $1", item.OriginalURL).Scan(&existingID); err == nil {
 					result[item.CorrelationID] = existingID
 					continue
 				}
@@ -301,13 +354,17 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 		result[item.CorrelationID] = id
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("error committing transaction: %w", err)
+	}
+
 	return result, nil
 }
 
 func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 	ctx := context.Background()
 
-	rows, err := s.pool.Query(ctx, "SELECT id, original_url FROM urls WHERE user_id = $1", userID)
+	rows, err := s.pool.Query(ctx, "SELECT id, original_url FROM urls WHERE user_id = $1 AND is_deleted = FALSE", userID)
 	if err != nil {
 		return nil, fmt.Errorf("error querying user URLs: %w", err)
 	}
@@ -331,4 +388,21 @@ func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 	}
 
 	return result, nil
+}
+
+func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
+	if len(urlIDs) == 0 {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	query := `UPDATE urls SET is_deleted = TRUE WHERE user_id = $1 AND id = ANY($2) AND is_deleted = FALSE`
+
+	_, err := s.pool.Exec(ctx, query, userID, urlIDs)
+	if err != nil {
+		return fmt.Errorf("error deleting URLs: %w", err)
+	}
+
+	return nil
 }

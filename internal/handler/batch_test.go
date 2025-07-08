@@ -56,6 +56,17 @@ func (m *MockBatchURLService) GetUserURLs(userID string) ([]model.UserURL, error
 	return []model.UserURL{}, nil
 }
 
+func (m *MockBatchURLService) GetOriginalURLWithDeletedStatus(id string) (string, error) {
+	if id == "abc123" {
+		return "https://example.com", nil
+	}
+	return "", nil
+}
+
+func (m *MockBatchURLService) DeleteUserURLs(userID string, urlIDs []string) error {
+	return nil
+}
+
 func TestHandleShortenBatch(t *testing.T) {
 	h := NewHandler(&MockBatchURLService{}, nil)
 

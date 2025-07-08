@@ -14,12 +14,14 @@ import (
 )
 
 type mockURLService struct {
-	shortenURLFunc           func(originalURL string) (string, error)
-	shortenURLWithUserFunc   func(originalURL, userID string) (string, error)
-	getOriginalURLFunc       func(id string) (string, bool)
-	shortenBatchFunc         func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
-	shortenBatchWithUserFunc func(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
-	getUserURLsFunc          func(userID string) ([]model.UserURL, error)
+	shortenURLFunc                      func(originalURL string) (string, error)
+	shortenURLWithUserFunc              func(originalURL, userID string) (string, error)
+	getOriginalURLFunc                  func(id string) (string, bool)
+	getOriginalURLWithDeletedStatusFunc func(id string) (string, bool, error)
+	shortenBatchFunc                    func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+	shortenBatchWithUserFunc            func(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
+	getUserURLsFunc                     func(userID string) ([]model.UserURL, error)
+	deleteUserURLsFunc                  func(userID string, urlIDs []string) error
 }
 
 func (m *mockURLService) ShortenURL(originalURL string) (string, error) {
@@ -56,6 +58,21 @@ func (m *mockURLService) GetUserURLs(userID string) ([]model.UserURL, error) {
 		return m.getUserURLsFunc(userID)
 	}
 	return []model.UserURL{}, nil
+}
+
+func (m *mockURLService) GetOriginalURLWithDeletedStatus(id string) (string, error) {
+	if m.getOriginalURLWithDeletedStatusFunc != nil {
+		url, _, err := m.getOriginalURLWithDeletedStatusFunc(id)
+		return url, err
+	}
+	return "", nil
+}
+
+func (m *mockURLService) DeleteUserURLs(userID string, urlIDs []string) error {
+	if m.deleteUserURLsFunc != nil {
+		return m.deleteUserURLsFunc(userID, urlIDs)
+	}
+	return nil
 }
 
 func TestHandler_handleShorten(t *testing.T) {
@@ -148,6 +165,7 @@ func TestHandler_handleRedirect(t *testing.T) {
 		urlID        string
 		mockOrigURL  string
 		mockFound    bool
+		mockError    error
 		wantStatus   int
 		wantLocation string
 	}{
@@ -156,6 +174,7 @@ func TestHandler_handleRedirect(t *testing.T) {
 			urlID:        "abc123",
 			mockOrigURL:  "https://example.com",
 			mockFound:    true,
+			mockError:    nil,
 			wantStatus:   http.StatusTemporaryRedirect,
 			wantLocation: "https://example.com",
 		},
@@ -164,7 +183,17 @@ func TestHandler_handleRedirect(t *testing.T) {
 			urlID:        "nonexistent",
 			mockOrigURL:  "",
 			mockFound:    false,
+			mockError:    nil,
 			wantStatus:   http.StatusBadRequest,
+			wantLocation: "",
+		},
+		{
+			name:         "URL deleted",
+			urlID:        "deleted123",
+			mockOrigURL:  "",
+			mockFound:    false,
+			mockError:    storage.ErrURLDeleted,
+			wantStatus:   http.StatusGone,
 			wantLocation: "",
 		},
 	}
@@ -172,8 +201,8 @@ func TestHandler_handleRedirect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockService := &mockURLService{
-				getOriginalURLFunc: func(id string) (string, bool) {
-					return tt.mockOrigURL, tt.mockFound
+				getOriginalURLWithDeletedStatusFunc: func(id string) (string, bool, error) {
+					return tt.mockOrigURL, tt.mockFound, tt.mockError
 				},
 			}
 

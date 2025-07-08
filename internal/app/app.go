@@ -1,7 +1,9 @@
 package app
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/MikhailRaia/url-shortener/internal/auth"
 	"github.com/MikhailRaia/url-shortener/internal/config"
@@ -13,6 +15,7 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/storage/file"
 	"github.com/MikhailRaia/url-shortener/internal/storage/memory"
 	"github.com/MikhailRaia/url-shortener/internal/storage/postgres"
+	"github.com/MikhailRaia/url-shortener/internal/worker"
 	"github.com/rs/zerolog/log"
 )
 
@@ -22,6 +25,7 @@ type App struct {
 	dbStorage      *postgres.Storage
 	jwtService     *auth.JWTService
 	authMiddleware *middleware.AuthMiddleware
+	deleteWorker   *worker.DeleteWorkerPool
 }
 
 func NewApp(cfg *config.Config) *App {
@@ -64,23 +68,42 @@ func NewApp(cfg *config.Config) *App {
 	// Создаем middleware для аутентификации
 	authMiddleware := middleware.NewAuthMiddleware(jwtService)
 
-	httpHandler := handler.NewHandler(urlService, dbStorage)
+	deleteWorkerConfig := worker.DefaultConfig()
+	deleteWorker := worker.NewDeleteWorkerPool(urlService, deleteWorkerConfig)
+	deleteWorker.Start()
+	log.Info().Msg("Delete worker pool started")
+
+	httpHandler := handler.NewHandlerWithDeleteWorker(urlService, dbStorage, deleteWorker)
 
 	return &App{
-		config:         cfg,
-		handler:        httpHandler.RegisterRoutesWithAuth(authMiddleware),
-		dbStorage:      dbStorage,
-		jwtService:     jwtService,
-		authMiddleware: authMiddleware,
+		config:       cfg,
+		handler:      httpHandler.RegisterRoutesWithAuth(authMiddleware),
+		dbStorage:    dbStorage,
+		jwtService:   jwtService,
+		deleteWorker: deleteWorker,
 	}
 }
 
 func (a *App) Run() error {
 	log.Info().Str("url", a.config.BaseURL).Str("address", a.config.ServerAddress).Msg("Starting server")
 
-	if a.dbStorage != nil {
-		defer a.dbStorage.Close()
+	defer func() {
+		if a.dbStorage != nil {
+			log.Info().Msg("Closing database connection")
+			a.dbStorage.Close()
+		}
+
+		if a.deleteWorker != nil {
+			log.Info().Msg("Shutting down delete worker pool")
+			if err := a.deleteWorker.Shutdown(10 * time.Second); err != nil {
+				log.Error().Err(err).Msg("Error during worker pool shutdown")
+			}
+		}
+	}()
+
+	if err := http.ListenAndServe(a.config.ServerAddress, a.handler); err != nil {
+		return fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 
-	return http.ListenAndServe(a.config.ServerAddress, a.handler)
+	return nil
 }
