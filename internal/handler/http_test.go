@@ -14,13 +14,23 @@ import (
 )
 
 type mockURLService struct {
-	shortenURLFunc     func(originalURL string) (string, error)
-	getOriginalURLFunc func(id string) (string, bool)
-	shortenBatchFunc   func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+	shortenURLFunc           func(originalURL string) (string, error)
+	shortenURLWithUserFunc   func(originalURL, userID string) (string, error)
+	getOriginalURLFunc       func(id string) (string, bool)
+	shortenBatchFunc         func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+	shortenBatchWithUserFunc func(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
+	getUserURLsFunc          func(userID string) ([]model.UserURL, error)
 }
 
 func (m *mockURLService) ShortenURL(originalURL string) (string, error) {
 	return m.shortenURLFunc(originalURL)
+}
+
+func (m *mockURLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
+	if m.shortenURLWithUserFunc != nil {
+		return m.shortenURLWithUserFunc(originalURL, userID)
+	}
+	return "", nil
 }
 
 func (m *mockURLService) GetOriginalURL(id string) (string, bool) {
@@ -31,8 +41,21 @@ func (m *mockURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.B
 	if m.shortenBatchFunc != nil {
 		return m.shortenBatchFunc(items)
 	}
-	// Возвращаем пустой результат, если функция не определена
 	return []model.BatchResponseItem{}, nil
+}
+
+func (m *mockURLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
+	if m.shortenBatchWithUserFunc != nil {
+		return m.shortenBatchWithUserFunc(items, userID)
+	}
+	return []model.BatchResponseItem{}, nil
+}
+
+func (m *mockURLService) GetUserURLs(userID string) ([]model.UserURL, error) {
+	if m.getUserURLsFunc != nil {
+		return m.getUserURLsFunc(userID)
+	}
+	return []model.UserURL{}, nil
 }
 
 func TestHandler_handleShorten(t *testing.T) {

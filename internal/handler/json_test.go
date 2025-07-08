@@ -13,9 +13,12 @@ import (
 )
 
 type MockURLService struct {
-	ShortenURLFunc     func(originalURL string) (string, error)
-	GetOriginalURLFunc func(id string) (string, bool)
-	ShortenBatchFunc   func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+	ShortenURLFunc           func(originalURL string) (string, error)
+	ShortenURLWithUserFunc   func(originalURL, userID string) (string, error)
+	GetOriginalURLFunc       func(id string) (string, bool)
+	ShortenBatchFunc         func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+	ShortenBatchWithUserFunc func(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
+	GetUserURLsFunc          func(userID string) ([]model.UserURL, error)
 }
 
 func (m *MockURLService) ShortenURL(originalURL string) (string, error) {
@@ -26,11 +29,32 @@ func (m *MockURLService) GetOriginalURL(id string) (string, bool) {
 	return m.GetOriginalURLFunc(id)
 }
 
+func (m *MockURLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
+	if m.ShortenURLWithUserFunc != nil {
+		return m.ShortenURLWithUserFunc(originalURL, userID)
+	}
+	return "", nil
+}
+
 func (m *MockURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
 	if m.ShortenBatchFunc != nil {
 		return m.ShortenBatchFunc(items)
 	}
 	return []model.BatchResponseItem{}, nil
+}
+
+func (m *MockURLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
+	if m.ShortenBatchWithUserFunc != nil {
+		return m.ShortenBatchWithUserFunc(items, userID)
+	}
+	return []model.BatchResponseItem{}, nil
+}
+
+func (m *MockURLService) GetUserURLs(userID string) ([]model.UserURL, error) {
+	if m.GetUserURLsFunc != nil {
+		return m.GetUserURLsFunc(userID)
+	}
+	return []model.UserURL{}, nil
 }
 
 func TestHandleShortenJSON(t *testing.T) {

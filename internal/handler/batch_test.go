@@ -19,6 +19,10 @@ func (m *MockBatchURLService) ShortenURL(originalURL string) (string, error) {
 	return "http://localhost:8080/abc123", nil
 }
 
+func (m *MockBatchURLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
+	return "http://localhost:8080/abc123", nil
+}
+
 func (m *MockBatchURLService) GetOriginalURL(id string) (string, bool) {
 	if id == "abc123" {
 		return "https://example.com", true
@@ -35,6 +39,21 @@ func (m *MockBatchURLService) ShortenBatch(items []model.BatchRequestItem) ([]mo
 		})
 	}
 	return result, nil
+}
+
+func (m *MockBatchURLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
+	result := make([]model.BatchResponseItem, 0, len(items))
+	for _, item := range items {
+		result = append(result, model.BatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      "http://localhost:8080/batch" + item.CorrelationID,
+		})
+	}
+	return result, nil
+}
+
+func (m *MockBatchURLService) GetUserURLs(userID string) ([]model.UserURL, error) {
+	return []model.UserURL{}, nil
 }
 
 func TestHandleShortenBatch(t *testing.T) {

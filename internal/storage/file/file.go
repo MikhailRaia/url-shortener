@@ -18,6 +18,7 @@ type Storage struct {
 	filePath      string
 	urlMap        map[string]string
 	reverseURLMap map[string]string
+	userURLs      map[string][]model.URL
 	idCounter     int
 	mutex         sync.RWMutex
 	fileWriteMu   sync.Mutex
@@ -33,6 +34,7 @@ func NewStorage(filePath string) (*Storage, error) {
 		filePath:      filePath,
 		urlMap:        make(map[string]string),
 		reverseURLMap: make(map[string]string),
+		userURLs:      make(map[string][]model.URL),
 		idCounter:     0,
 	}
 
@@ -73,6 +75,7 @@ func (s *Storage) Save(originalURL string) (string, error) {
 		UUID:        uuid,
 		ShortURL:    id,
 		OriginalURL: originalURL,
+		UserID:      "",
 	}
 
 	if err := s.saveRecordToFile(record); err != nil {
@@ -125,6 +128,7 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 			UUID:        uuid,
 			ShortURL:    id,
 			OriginalURL: item.OriginalURL,
+			UserID:      "",
 		}
 
 		if err := s.saveRecordToFile(record); err != nil {
@@ -159,6 +163,16 @@ func (s *Storage) loadFromFile() error {
 		}
 
 		s.urlMap[record.ShortURL] = record.OriginalURL
+		s.reverseURLMap[record.OriginalURL] = record.ShortURL
+
+		if record.UserID != "" {
+			url := model.URL{
+				ID:          record.ShortURL,
+				OriginalURL: record.OriginalURL,
+				UserID:      record.UserID,
+			}
+			s.userURLs[record.UserID] = append(s.userURLs[record.UserID], url)
+		}
 
 		if id, err := strconv.Atoi(record.UUID); err == nil && id > maxID {
 			maxID = id
@@ -193,4 +207,126 @@ func (s *Storage) saveRecordToFile(record model.URLRecord) error {
 	}
 
 	return nil
+}
+
+func (s *Storage) SaveWithUser(originalURL, userID string) (string, error) {
+	s.mutex.RLock()
+	existingID, exists := s.reverseURLMap[originalURL]
+	s.mutex.RUnlock()
+
+	if exists {
+		return existingID, storage.ErrURLExists
+	}
+
+	id, err := generator.GenerateID(8)
+	if err != nil {
+		return "", err
+	}
+
+	s.mutex.Lock()
+	if existingID, exists := s.reverseURLMap[originalURL]; exists {
+		s.mutex.Unlock()
+		return existingID, storage.ErrURLExists
+	}
+
+	s.idCounter++
+	uuid := strconv.Itoa(s.idCounter)
+	s.urlMap[id] = originalURL
+	s.reverseURLMap[originalURL] = id
+
+	url := model.URL{
+		ID:          id,
+		OriginalURL: originalURL,
+		UserID:      userID,
+	}
+	s.userURLs[userID] = append(s.userURLs[userID], url)
+	s.mutex.Unlock()
+
+	record := model.URLRecord{
+		UUID:        uuid,
+		ShortURL:    id,
+		OriginalURL: originalURL,
+		UserID:      userID,
+	}
+
+	if err := s.saveRecordToFile(record); err != nil {
+		return "", err
+	}
+
+	return id, nil
+}
+
+func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID string) (map[string]string, error) {
+	result := make(map[string]string)
+
+	for _, item := range items {
+		s.mutex.RLock()
+		existingID, exists := s.reverseURLMap[item.OriginalURL]
+		s.mutex.RUnlock()
+
+		if exists {
+			result[item.CorrelationID] = existingID
+			continue
+		}
+
+		id, err := generator.GenerateID(8)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate ID: %w", err)
+		}
+
+		s.mutex.Lock()
+		if existingID, exists := s.reverseURLMap[item.OriginalURL]; exists {
+			s.mutex.Unlock()
+			result[item.CorrelationID] = existingID
+			continue
+		}
+
+		s.idCounter++
+		uuid := strconv.Itoa(s.idCounter)
+		s.urlMap[id] = item.OriginalURL
+		s.reverseURLMap[item.OriginalURL] = id
+
+		url := model.URL{
+			ID:          id,
+			OriginalURL: item.OriginalURL,
+			UserID:      userID,
+		}
+		s.userURLs[userID] = append(s.userURLs[userID], url)
+		s.mutex.Unlock()
+
+		record := model.URLRecord{
+			UUID:        uuid,
+			ShortURL:    id,
+			OriginalURL: item.OriginalURL,
+			UserID:      userID,
+		}
+
+		if err := s.saveRecordToFile(record); err != nil {
+			return nil, fmt.Errorf("failed to save record to file: %w", err)
+		}
+
+		result[item.CorrelationID] = id
+	}
+
+	return result, nil
+}
+
+func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	urls, exists := s.userURLs[userID]
+	if !exists {
+		return []model.UserURL{}, nil
+	}
+
+	result := make([]model.UserURL, len(urls))
+	for i, url := range urls {
+		result[i] = model.UserURL{
+			ShortURL:    url.ID,
+			OriginalURL: url.OriginalURL,
+		}
+	}
+
+	return result, nil
 }
