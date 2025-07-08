@@ -36,6 +36,10 @@ func (s *URLService) GetOriginalURL(id string) (string, bool) {
 	return s.storage.Get(id)
 }
 
+func (s *URLService) GetOriginalURLWithDeletedStatus(id string) (string, bool, error) {
+	return s.storage.GetWithDeletedStatus(id)
+}
+
 func (s *URLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
 	idMap, err := s.storage.SaveBatch(items)
 	if err != nil {
@@ -111,4 +115,8 @@ func (s *URLService) GetUserURLs(userID string) ([]model.UserURL, error) {
 	}
 
 	return result, nil
+}
+
+func (s *URLService) DeleteUserURLs(userID string, urlIDs []string) error {
+	return s.storage.DeleteUserURLs(userID, urlIDs)
 }

@@ -50,11 +50,20 @@ func (s *Storage) createTable(ctx context.Context) error {
 			id VARCHAR(12) PRIMARY KEY,
 			original_url TEXT NOT NULL,
 			user_id VARCHAR(32),
+			is_deleted BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 		);
 	`
 
 	if _, err := s.pool.Exec(ctx, createTableQuery); err != nil {
+		return err
+	}
+
+	alterTableQuery := `
+		ALTER TABLE urls ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
+	`
+
+	if _, err := s.pool.Exec(ctx, alterTableQuery); err != nil {
 		return err
 	}
 
@@ -125,7 +134,8 @@ func (s *Storage) Get(id string) (string, bool) {
 	ctx := context.Background()
 
 	var originalURL string
-	err := s.pool.QueryRow(ctx, "SELECT original_url FROM urls WHERE id = $1", id).Scan(&originalURL)
+	var isDeleted bool
+	err := s.pool.QueryRow(ctx, "SELECT original_url, is_deleted FROM urls WHERE id = $1", id).Scan(&originalURL, &isDeleted)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", false
@@ -134,7 +144,31 @@ func (s *Storage) Get(id string) (string, bool) {
 		return "", false
 	}
 
+	if isDeleted {
+		return "", false
+	}
+
 	return originalURL, true
+}
+
+func (s *Storage) GetWithDeletedStatus(id string) (string, bool, error) {
+	ctx := context.Background()
+
+	var originalURL string
+	var isDeleted bool
+	err := s.pool.QueryRow(ctx, "SELECT original_url, is_deleted FROM urls WHERE id = $1", id).Scan(&originalURL, &isDeleted)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("error querying database: %w", err)
+	}
+
+	if isDeleted {
+		return "", false, storage.ErrURLDeleted
+	}
+
+	return originalURL, true, nil
 }
 
 func (s *Storage) Ping(ctx context.Context) error {
@@ -307,7 +341,7 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 	ctx := context.Background()
 
-	rows, err := s.pool.Query(ctx, "SELECT id, original_url FROM urls WHERE user_id = $1", userID)
+	rows, err := s.pool.Query(ctx, "SELECT id, original_url FROM urls WHERE user_id = $1 AND is_deleted = FALSE", userID)
 	if err != nil {
 		return nil, fmt.Errorf("error querying user URLs: %w", err)
 	}
@@ -331,4 +365,21 @@ func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 	}
 
 	return result, nil
+}
+
+func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
+	if len(urlIDs) == 0 {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	query := `UPDATE urls SET is_deleted = TRUE WHERE user_id = $1 AND id = ANY($2) AND is_deleted = FALSE`
+
+	_, err := s.pool.Exec(ctx, query, userID, urlIDs)
+	if err != nil {
+		return fmt.Errorf("error deleting URLs: %w", err)
+	}
+
+	return nil
 }

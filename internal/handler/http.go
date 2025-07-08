@@ -21,9 +21,11 @@ type URLService interface {
 	ShortenURL(originalURL string) (string, error)
 	ShortenURLWithUser(originalURL, userID string) (string, error)
 	GetOriginalURL(id string) (string, bool)
+	GetOriginalURLWithDeletedStatus(id string) (string, bool, error)
 	ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
 	ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
 	GetUserURLs(userID string) ([]model.UserURL, error)
+	DeleteUserURLs(userID string, urlIDs []string) error
 }
 
 type DBPinger interface {
@@ -83,6 +85,7 @@ func (h *Handler) RegisterRoutesWithAuth(authMiddleware *middleware.AuthMiddlewa
 	r.Get("/ping", h.handlePing)
 
 	r.Get("/api/user/urls", h.handleGetUserURLs)
+	r.Delete("/api/user/urls", h.handleDeleteUserURLs)
 
 	return r
 }
@@ -141,7 +144,16 @@ func (h *Handler) handleRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL, found := h.urlService.GetOriginalURL(id)
+	originalURL, found, err := h.urlService.GetOriginalURLWithDeletedStatus(id)
+	if err != nil {
+		if errors.Is(err, storage.ErrURLDeleted) {
+			w.WriteHeader(http.StatusGone)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	if !found {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -371,4 +383,38 @@ func (h *Handler) handleShortenBatchWithAuth(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	w.Write(response)
+}
+
+func (h *Handler) handleDeleteUserURLs(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	contentType := r.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var urlIDs []string
+	if err := json.NewDecoder(r.Body).Decode(&urlIDs); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(urlIDs) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Асинхронное удаление URL
+	go func() {
+		if err := h.urlService.DeleteUserURLs(userID, urlIDs); err != nil {
+			log.Error().Err(err).Msg("Failed to delete user URLs")
+		}
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
 }
