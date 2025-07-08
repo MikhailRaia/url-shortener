@@ -3,9 +3,11 @@ package app
 import (
 	"net/http"
 
+	"github.com/MikhailRaia/url-shortener/internal/auth"
 	"github.com/MikhailRaia/url-shortener/internal/config"
 	"github.com/MikhailRaia/url-shortener/internal/handler"
 	"github.com/MikhailRaia/url-shortener/internal/logger"
+	"github.com/MikhailRaia/url-shortener/internal/middleware"
 	"github.com/MikhailRaia/url-shortener/internal/service"
 	"github.com/MikhailRaia/url-shortener/internal/storage"
 	"github.com/MikhailRaia/url-shortener/internal/storage/file"
@@ -15,9 +17,11 @@ import (
 )
 
 type App struct {
-	config    *config.Config
-	handler   http.Handler
-	dbStorage *postgres.Storage
+	config         *config.Config
+	handler        http.Handler
+	dbStorage      *postgres.Storage
+	jwtService     *auth.JWTService
+	authMiddleware *middleware.AuthMiddleware
 }
 
 func NewApp(cfg *config.Config) *App {
@@ -54,12 +58,20 @@ func NewApp(cfg *config.Config) *App {
 
 	urlService := service.NewURLService(urlStorage, cfg.BaseURL)
 
+	// Создаем JWT сервис
+	jwtService := auth.NewJWTService(cfg.JWTSecretKey)
+
+	// Создаем middleware для аутентификации
+	authMiddleware := middleware.NewAuthMiddleware(jwtService)
+
 	httpHandler := handler.NewHandler(urlService, dbStorage)
 
 	return &App{
-		config:    cfg,
-		handler:   httpHandler.RegisterRoutes(),
-		dbStorage: dbStorage,
+		config:         cfg,
+		handler:        httpHandler.RegisterRoutesWithAuth(authMiddleware),
+		dbStorage:      dbStorage,
+		jwtService:     jwtService,
+		authMiddleware: authMiddleware,
 	}
 }
 
