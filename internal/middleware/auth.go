@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/MikhailRaia/url-shortener/internal/auth"
+	"github.com/MikhailRaia/url-shortener/internal/generator"
 	"github.com/rs/zerolog/log"
 )
 
@@ -44,7 +45,7 @@ func (a *AuthMiddleware) AuthenticateUser(next http.Handler) http.Handler {
 
 		if userID == "" {
 			log.Debug().Msg("Creating new user")
-			newUserID, err := a.jwtService.GenerateUserID()
+			newUserID, err := generator.GenerateID(16)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to generate user ID")
 				w.WriteHeader(http.StatusInternalServerError)

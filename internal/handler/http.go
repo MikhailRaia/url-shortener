@@ -21,24 +21,39 @@ type URLService interface {
 	ShortenURL(originalURL string) (string, error)
 	ShortenURLWithUser(originalURL, userID string) (string, error)
 	GetOriginalURL(id string) (string, bool)
+	GetOriginalURLWithDeletedStatus(id string) (string, error)
 	ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
 	ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
 	GetUserURLs(userID string) ([]model.UserURL, error)
+	DeleteUserURLs(userID string, urlIDs []string) error
 }
 
 type DBPinger interface {
 	Ping(ctx context.Context) error
 }
 
+type DeleteWorker interface {
+	Submit(userID string, urlIDs []string) error
+}
+
 type Handler struct {
-	urlService URLService
-	dbPinger   DBPinger
+	urlService   URLService
+	dbPinger     DBPinger
+	deleteWorker DeleteWorker
 }
 
 func NewHandler(urlService URLService, dbPinger DBPinger) *Handler {
 	return &Handler{
 		urlService: urlService,
 		dbPinger:   dbPinger,
+	}
+}
+
+func NewHandlerWithDeleteWorker(urlService URLService, dbPinger DBPinger, deleteWorker DeleteWorker) *Handler {
+	return &Handler{
+		urlService:   urlService,
+		dbPinger:     dbPinger,
+		deleteWorker: deleteWorker,
 	}
 }
 
@@ -83,6 +98,7 @@ func (h *Handler) RegisterRoutesWithAuth(authMiddleware *middleware.AuthMiddlewa
 	r.Get("/ping", h.handlePing)
 
 	r.Get("/api/user/urls", h.handleGetUserURLs)
+	r.Delete("/api/user/urls", h.handleDeleteUserURLs)
 
 	return r
 }
@@ -125,6 +141,7 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		log.Error().Err(err).Msg("Failed to shorten URL")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -141,8 +158,18 @@ func (h *Handler) handleRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL, found := h.urlService.GetOriginalURL(id)
-	if !found {
+	originalURL, err := h.urlService.GetOriginalURLWithDeletedStatus(id)
+	if err != nil {
+		if errors.Is(err, storage.ErrURLDeleted) {
+			w.WriteHeader(http.StatusGone)
+			return
+		}
+		log.Error().Err(err).Msg("Failed to get original URL")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if originalURL == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -159,6 +186,7 @@ func (h *Handler) handlePing(w http.ResponseWriter, r *http.Request) {
 
 	err := h.dbPinger.Ping(r.Context())
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to ping database")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -198,12 +226,14 @@ func (h *Handler) handleShortenBatch(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.urlService.ShortenBatch(items)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to shorten batch URLs")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	response, err := json.Marshal(result)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal batch response")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -224,6 +254,7 @@ func (h *Handler) handleGetUserURLs(w http.ResponseWriter, r *http.Request) {
 
 	urls, err := h.urlService.GetUserURLs(userID)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to get user URLs")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -235,6 +266,7 @@ func (h *Handler) handleGetUserURLs(w http.ResponseWriter, r *http.Request) {
 
 	response, err := json.Marshal(urls)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal user URLs response")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -280,6 +312,7 @@ func (h *Handler) handleShortenWithAuth(w http.ResponseWriter, r *http.Request) 
 			w.Write([]byte(shortenedURL))
 			return
 		}
+		log.Error().Err(err).Msg("Failed to shorten URL with user")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -322,6 +355,7 @@ func (h *Handler) HandleShortenJSONWithAuth(w http.ResponseWriter, r *http.Reque
 			w.Write(jsonResponse)
 			return
 		}
+		log.Error().Err(err).Msg("Failed to shorten JSON URL with user")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -329,6 +363,7 @@ func (h *Handler) HandleShortenJSONWithAuth(w http.ResponseWriter, r *http.Reque
 	response := ShortenResponse{Result: shortenedURL}
 	jsonResponse, err := json.Marshal(response)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal shorten response")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -358,12 +393,14 @@ func (h *Handler) handleShortenBatchWithAuth(w http.ResponseWriter, r *http.Requ
 
 	result, err := h.urlService.ShortenBatchWithUser(items, userID)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to shorten batch URLs with user")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	response, err := json.Marshal(result)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal batch response with user")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -371,4 +408,51 @@ func (h *Handler) handleShortenBatchWithAuth(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	w.Write(response)
+}
+
+func (h *Handler) handleDeleteUserURLs(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	contentType := r.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var urlIDs []string
+	if err := json.NewDecoder(r.Body).Decode(&urlIDs); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(urlIDs) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Отправляем запрос на удаление в воркер-пул
+	if h.deleteWorker != nil {
+		if err := h.deleteWorker.Submit(userID, urlIDs); err != nil {
+			log.Error().Err(err).Msg("Failed to submit delete request to worker pool")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		log.Debug().
+			Str("userID", userID).
+			Int("urlCount", len(urlIDs)).
+			Msg("Delete request submitted to worker pool")
+	} else {
+		go func() {
+			if err := h.urlService.DeleteUserURLs(userID, urlIDs); err != nil {
+				log.Error().Err(err).Msg("Failed to delete user URLs")
+			}
+		}()
+		log.Warn().Msg("DeleteWorker not configured, using fallback goroutine")
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }

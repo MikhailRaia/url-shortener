@@ -13,12 +13,14 @@ import (
 )
 
 type MockURLService struct {
-	ShortenURLFunc           func(originalURL string) (string, error)
-	ShortenURLWithUserFunc   func(originalURL, userID string) (string, error)
-	GetOriginalURLFunc       func(id string) (string, bool)
-	ShortenBatchFunc         func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
-	ShortenBatchWithUserFunc func(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
-	GetUserURLsFunc          func(userID string) ([]model.UserURL, error)
+	ShortenURLFunc                      func(originalURL string) (string, error)
+	ShortenURLWithUserFunc              func(originalURL, userID string) (string, error)
+	GetOriginalURLFunc                  func(id string) (string, bool)
+	GetOriginalURLWithDeletedStatusFunc func(id string) (string, error)
+	ShortenBatchFunc                    func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+	ShortenBatchWithUserFunc            func(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
+	GetUserURLsFunc                     func(userID string) ([]model.UserURL, error)
+	DeleteUserURLsFunc                  func(userID string, urlIDs []string) error
 }
 
 func (m *MockURLService) ShortenURL(originalURL string) (string, error) {
@@ -55,6 +57,20 @@ func (m *MockURLService) GetUserURLs(userID string) ([]model.UserURL, error) {
 		return m.GetUserURLsFunc(userID)
 	}
 	return []model.UserURL{}, nil
+}
+
+func (m *MockURLService) GetOriginalURLWithDeletedStatus(id string) (string, error) {
+	if m.GetOriginalURLWithDeletedStatusFunc != nil {
+		return m.GetOriginalURLWithDeletedStatusFunc(id)
+	}
+	return "", nil
+}
+
+func (m *MockURLService) DeleteUserURLs(userID string, urlIDs []string) error {
+	if m.DeleteUserURLsFunc != nil {
+		return m.DeleteUserURLsFunc(userID, urlIDs)
+	}
+	return nil
 }
 
 func TestHandleShortenJSON(t *testing.T) {

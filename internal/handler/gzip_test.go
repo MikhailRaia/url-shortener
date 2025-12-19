@@ -58,6 +58,17 @@ func (m *MockGzipURLService) GetUserURLs(userID string) ([]model.UserURL, error)
 	return []model.UserURL{}, nil
 }
 
+func (m *MockGzipURLService) GetOriginalURLWithDeletedStatus(id string) (string, error) {
+	if id == "abc123" {
+		return "https://example.com", nil
+	}
+	return "", nil
+}
+
+func (m *MockGzipURLService) DeleteUserURLs(userID string, urlIDs []string) error {
+	return nil
+}
+
 func TestGzipCompression(t *testing.T) {
 	h := NewHandler(&MockGzipURLService{}, nil)
 

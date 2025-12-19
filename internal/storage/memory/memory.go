@@ -4,19 +4,22 @@ import (
 	"fmt"
 	"github.com/MikhailRaia/url-shortener/internal/generator"
 	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 	"sync"
 )
 
 type Storage struct {
-	urlMap   map[string]string
-	userURLs map[string][]model.URL
-	mutex    sync.RWMutex
+	urlMap     map[string]string
+	userURLs   map[string][]model.URL
+	deletedMap map[string]bool
+	mutex      sync.RWMutex
 }
 
 func NewStorage() *Storage {
 	return &Storage{
-		urlMap:   make(map[string]string),
-		userURLs: make(map[string][]model.URL),
+		urlMap:     make(map[string]string),
+		userURLs:   make(map[string][]model.URL),
+		deletedMap: make(map[string]bool),
 	}
 }
 
@@ -38,7 +41,31 @@ func (s *Storage) Get(id string) (string, bool) {
 	defer s.mutex.RUnlock()
 
 	originalURL, found := s.urlMap[id]
-	return originalURL, found
+	if !found {
+		return "", false
+	}
+
+	if s.deletedMap[id] {
+		return "", false
+	}
+
+	return originalURL, true
+}
+
+func (s *Storage) GetWithDeletedStatus(id string) (string, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	originalURL, found := s.urlMap[id]
+	if !found {
+		return "", nil
+	}
+
+	if s.deletedMap[id] {
+		return "", storage.ErrURLDeleted
+	}
+
+	return originalURL, nil
 }
 
 func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, error) {
@@ -116,13 +143,40 @@ func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 		return []model.UserURL{}, nil
 	}
 
-	result := make([]model.UserURL, len(urls))
-	for i, url := range urls {
-		result[i] = model.UserURL{
-			ShortURL:    url.ID,
-			OriginalURL: url.OriginalURL,
+	var result []model.UserURL
+	for _, url := range urls {
+		if !s.deletedMap[url.ID] {
+			result = append(result, model.UserURL{
+				ShortURL:    url.ID,
+				OriginalURL: url.OriginalURL,
+			})
 		}
 	}
 
 	return result, nil
+}
+
+func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	userURLs, exists := s.userURLs[userID]
+	if !exists {
+		return nil
+	}
+
+	// Create a set of URLs that belong to the user
+	userURLSet := make(map[string]bool)
+	for _, url := range userURLs {
+		userURLSet[url.ID] = true
+	}
+
+	// Mark URLs as deleted only if they belong to the user
+	for _, urlID := range urlIDs {
+		if userURLSet[urlID] {
+			s.deletedMap[urlID] = true
+		}
+	}
+
+	return nil
 }

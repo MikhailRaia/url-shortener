@@ -8,12 +8,14 @@ import (
 )
 
 type mockStorage struct {
-	saveFunc              func(originalURL string) (string, error)
-	saveWithUserFunc      func(originalURL, userID string) (string, error)
-	getFunc               func(id string) (string, bool)
-	saveBatchFunc         func(items []model.BatchRequestItem) (map[string]string, error)
-	saveBatchWithUserFunc func(items []model.BatchRequestItem, userID string) (map[string]string, error)
-	getUserURLsFunc       func(userID string) ([]model.UserURL, error)
+	saveFunc                 func(originalURL string) (string, error)
+	saveWithUserFunc         func(originalURL, userID string) (string, error)
+	getFunc                  func(id string) (string, bool)
+	getWithDeletedStatusFunc func(id string) (string, bool, error)
+	saveBatchFunc            func(items []model.BatchRequestItem) (map[string]string, error)
+	saveBatchWithUserFunc    func(items []model.BatchRequestItem, userID string) (map[string]string, error)
+	getUserURLsFunc          func(userID string) ([]model.UserURL, error)
+	deleteUserURLsFunc       func(userID string, urlIDs []string) error
 }
 
 func (m *mockStorage) Save(originalURL string) (string, error) {
@@ -50,6 +52,21 @@ func (m *mockStorage) GetUserURLs(userID string) ([]model.UserURL, error) {
 		return m.getUserURLsFunc(userID)
 	}
 	return []model.UserURL{}, nil
+}
+
+func (m *mockStorage) GetWithDeletedStatus(id string) (string, error) {
+	if m.getWithDeletedStatusFunc != nil {
+		str, _, err := m.getWithDeletedStatusFunc(id)
+		return str, err
+	}
+	return "", nil
+}
+
+func (m *mockStorage) DeleteUserURLs(userID string, urlIDs []string) error {
+	if m.deleteUserURLsFunc != nil {
+		return m.deleteUserURLsFunc(userID, urlIDs)
+	}
+	return nil
 }
 
 func TestURLService_ShortenURL(t *testing.T) {
