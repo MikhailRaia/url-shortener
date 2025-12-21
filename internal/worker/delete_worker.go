@@ -38,7 +38,7 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		WorkerCount:  5,
+		WorkerCount:  1,
 		BufferSize:   100,
 		BatchSize:    10,
 		BatchTimeout: 5 * time.Second,
@@ -80,8 +80,9 @@ func (p *DeleteWorkerPool) worker(id int) {
 	log.Debug().Int("workerID", id).Msg("Worker started")
 
 	batch := make(map[string][]string) // userID -> []urlIDs
-	ticker := time.NewTicker(p.batchTimeout)
-	defer ticker.Stop()
+	totalURLs := 0
+	var timer *time.Timer
+	var timerC <-chan time.Time
 
 	processBatch := func() {
 		if len(batch) == 0 {
@@ -110,7 +111,39 @@ func (p *DeleteWorkerPool) worker(id int) {
 			}
 		}
 
-		batch = make(map[string][]string)
+		for k := range batch {
+			delete(batch, k)
+		}
+		totalURLs = 0
+	}
+
+	startOrResetTimer := func() {
+		if timer == nil {
+			timer = time.NewTimer(p.batchTimeout)
+			timerC = timer.C
+			return
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(p.batchTimeout)
+		timerC = timer.C
+	}
+
+	stopTimer := func() {
+		if timer == nil {
+			return
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timerC = nil
 	}
 
 	for {
@@ -118,6 +151,7 @@ func (p *DeleteWorkerPool) worker(id int) {
 		case <-p.ctx.Done():
 			log.Debug().Int("workerID", id).Msg("Worker shutting down")
 			processBatch()
+			stopTimer()
 			return
 
 		case req, ok := <-p.requestChan:
@@ -125,23 +159,28 @@ func (p *DeleteWorkerPool) worker(id int) {
 				// Канал закрыт - обрабатываем оставшиеся запросы и выходим
 				log.Debug().Int("workerID", id).Msg("Request channel closed, processing remaining batch")
 				processBatch()
+				stopTimer()
 				return
 			}
 
+			batchWasEmpty := len(batch) == 0
 			batch[req.UserID] = append(batch[req.UserID], req.URLIDs...)
-
-			totalURLs := 0
-			for _, urls := range batch {
-				totalURLs += len(urls)
-			}
+			totalURLs += len(req.URLIDs)
 
 			if totalURLs >= p.batchSize {
 				processBatch()
-				ticker.Reset(p.batchTimeout)
+				if len(batch) == 0 {
+					stopTimer()
+				} else {
+					startOrResetTimer()
+				}
+			} else if batchWasEmpty {
+				startOrResetTimer()
 			}
 
-		case <-ticker.C:
+		case <-timerC:
 			processBatch()
+			stopTimer()
 		}
 	}
 }

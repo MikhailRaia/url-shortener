@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 type Config struct {
@@ -12,6 +13,7 @@ type Config struct {
 	FileStoragePath string
 	DatabaseDSN     string
 	JWTSecretKey    string
+	MaxProcs        int
 }
 
 func NewConfig() *Config {
@@ -21,6 +23,7 @@ func NewConfig() *Config {
 		FileStoragePath: getDefaultStoragePath(),
 		DatabaseDSN:     "",
 		JWTSecretKey:    "default-secret-key-change-in-production",
+		MaxProcs:        0,
 	}
 
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address (e.g. localhost:8888)")
@@ -28,6 +31,7 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "Path to file storage")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database connection string (e.g. postgres://username:password@localhost:5432/database_name)")
 	flag.StringVar(&cfg.JWTSecretKey, "s", cfg.JWTSecretKey, "JWT secret key for signing tokens")
+	flag.IntVar(&cfg.MaxProcs, "p", cfg.MaxProcs, "GOMAXPROCS value (0=auto)")
 
 	flag.Parse()
 
@@ -49,6 +53,12 @@ func NewConfig() *Config {
 
 	if envJWTSecretKey := os.Getenv("JWT_SECRET_KEY"); envJWTSecretKey != "" {
 		cfg.JWTSecretKey = envJWTSecretKey
+	}
+
+	if envMaxProcs := os.Getenv("MAX_PROCS"); envMaxProcs != "" {
+		if n, err := strconv.Atoi(envMaxProcs); err == nil {
+			cfg.MaxProcs = n
+		}
 	}
 
 	return cfg
