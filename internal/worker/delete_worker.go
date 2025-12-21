@@ -38,7 +38,7 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		WorkerCount:  1,
+		WorkerCount:  5,
 		BufferSize:   100,
 		BatchSize:    10,
 		BatchTimeout: 5 * time.Second,
