@@ -7,11 +7,13 @@ import (
 	"net/url"
 )
 
+// URLService provides business logic for creating and resolving short URLs.
 type URLService struct {
 	storage storage.URLStorage
 	baseURL string
 }
 
+// NewURLService constructs a URLService with the given storage and base URL.
 func NewURLService(storage storage.URLStorage, baseURL string) *URLService {
 	return &URLService{
 		storage: storage,
@@ -19,6 +21,7 @@ func NewURLService(storage storage.URLStorage, baseURL string) *URLService {
 	}
 }
 
+// ShortenURL creates a short URL and returns its absolute form.
 func (s *URLService) ShortenURL(originalURL string) (string, error) {
 	id, err := s.storage.Save(originalURL)
 	if err != nil {
@@ -33,14 +36,17 @@ func (s *URLService) ShortenURL(originalURL string) (string, error) {
 	return shortenedURL, nil
 }
 
+// GetOriginalURL resolves an ID to the original URL if it exists and not deleted.
 func (s *URLService) GetOriginalURL(id string) (string, bool) {
 	return s.storage.Get(id)
 }
 
+// GetOriginalURLWithDeletedStatus resolves an ID and reports deletion via error.
 func (s *URLService) GetOriginalURLWithDeletedStatus(id string) (string, error) {
 	return s.storage.GetWithDeletedStatus(id)
 }
 
+// ShortenBatch creates short URLs for a batch of items.
 func (s *URLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
 	idMap, err := s.storage.SaveBatch(items)
 	if err != nil {
@@ -64,6 +70,7 @@ func (s *URLService) ShortenBatch(items []model.BatchRequestItem) ([]model.Batch
 	return result, nil
 }
 
+// ShortenURLWithUser creates a short URL associated with a user.
 func (s *URLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
 	id, err := s.storage.SaveWithUser(originalURL, userID)
 	if err != nil {
@@ -78,6 +85,7 @@ func (s *URLService) ShortenURLWithUser(originalURL, userID string) (string, err
 	return shortenedURL, nil
 }
 
+// ShortenBatchWithUser creates short URLs for a batch and associates them with a user.
 func (s *URLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
 	idMap, err := s.storage.SaveBatchWithUser(items, userID)
 	if err != nil {
@@ -101,6 +109,7 @@ func (s *URLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID
 	return result, nil
 }
 
+// GetUserURLs returns all URLs belonging to a user, excluding deleted ones.
 func (s *URLService) GetUserURLs(userID string) ([]model.UserURL, error) {
 	urls, err := s.storage.GetUserURLs(userID)
 	if err != nil {
@@ -118,6 +127,7 @@ func (s *URLService) GetUserURLs(userID string) ([]model.UserURL, error) {
 	return result, nil
 }
 
+// DeleteUserURLs marks user's URLs as deleted.
 func (s *URLService) DeleteUserURLs(userID string, urlIDs []string) error {
 	return s.storage.DeleteUserURLs(userID, urlIDs)
 }

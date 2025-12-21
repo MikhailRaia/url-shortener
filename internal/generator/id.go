@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 )
 
+// GenerateID returns a URL-safe random identifier of approximately the given length.
 func GenerateID(length int) (string, error) {
 	b := make([]byte, length)
 	_, err := rand.Read(b)

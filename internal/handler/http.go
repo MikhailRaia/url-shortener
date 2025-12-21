@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// URLService defines operations for creating and resolving shortened URLs.
 type URLService interface {
 	ShortenURL(originalURL string) (string, error)
 	ShortenURLWithUser(originalURL, userID string) (string, error)
@@ -28,20 +29,24 @@ type URLService interface {
 	DeleteUserURLs(userID string, urlIDs []string) error
 }
 
+// DBPinger defines a health-check capability for backing stores.
 type DBPinger interface {
 	Ping(ctx context.Context) error
 }
 
+// DeleteWorker submits asynchronous deletion jobs for user URLs.
 type DeleteWorker interface {
 	Submit(userID string, urlIDs []string) error
 }
 
+// Handler exposes HTTP endpoints for the URL shortener service.
 type Handler struct {
 	urlService   URLService
 	dbPinger     DBPinger
 	deleteWorker DeleteWorker
 }
 
+// NewHandler constructs a Handler without auth-specific routes.
 func NewHandler(urlService URLService, dbPinger DBPinger) *Handler {
 	return &Handler{
 		urlService: urlService,
@@ -49,6 +54,7 @@ func NewHandler(urlService URLService, dbPinger DBPinger) *Handler {
 	}
 }
 
+// NewHandlerWithDeleteWorker constructs a Handler and configures an async delete worker.
 func NewHandlerWithDeleteWorker(urlService URLService, dbPinger DBPinger, deleteWorker DeleteWorker) *Handler {
 	return &Handler{
 		urlService:   urlService,
@@ -57,6 +63,7 @@ func NewHandlerWithDeleteWorker(urlService URLService, dbPinger DBPinger, delete
 	}
 }
 
+// RegisterRoutes registers public endpoints that don't require authentication.
 func (h *Handler) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
 
@@ -78,6 +85,7 @@ func (h *Handler) RegisterRoutes() http.Handler {
 	return r
 }
 
+// RegisterRoutesWithAuth registers endpoints with auth and user-specific features.
 func (h *Handler) RegisterRoutesWithAuth(authMiddleware *middleware.AuthMiddleware) http.Handler {
 	r := chi.NewRouter()
 
@@ -321,6 +329,7 @@ func (h *Handler) handleShortenWithAuth(w http.ResponseWriter, r *http.Request) 
 	w.Write([]byte(shortenedURL))
 }
 
+// HandleShortenJSONWithAuth handles POST /api/shorten with user authentication.
 func (h *Handler) HandleShortenJSONWithAuth(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {

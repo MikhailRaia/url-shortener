@@ -7,10 +7,13 @@ import (
 )
 
 var (
-	ErrURLExists  = errors.New("url already exists")
+	// ErrURLExists indicates the submitted URL has already been shortened.
+	ErrURLExists = errors.New("url already exists")
+	// ErrURLDeleted indicates the short URL was deleted by the user.
 	ErrURLDeleted = errors.New("url has been deleted")
 )
 
+// URLStorage defines persistence operations for shortened URLs.
 type URLStorage interface {
 	Save(originalURL string) (string, error)
 

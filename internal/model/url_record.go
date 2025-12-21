@@ -1,5 +1,6 @@
 package model
 
+// URLRecord is a persisted record used by file storage implementation.
 type URLRecord struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`

@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// InitLogger initializes default zerolog logger for the application.
 func InitLogger() {
 	log.Logger = zerolog.New(os.Stdout).
 		With().
@@ -17,6 +18,7 @@ func InitLogger() {
 		Level(zerolog.InfoLevel)
 }
 
+// RequestLogger logs basic request/response metadata for each HTTP call.
 func RequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -40,12 +42,14 @@ func RequestLogger(next http.Handler) http.Handler {
 	})
 }
 
+// ResponseWriter wraps http.ResponseWriter to capture status code and size.
 type ResponseWriter struct {
 	http.ResponseWriter
 	statusCode int
 	size       int
 }
 
+// NewResponseWriter creates a ResponseWriter wrapper.
 func NewResponseWriter(w http.ResponseWriter) *ResponseWriter {
 	return &ResponseWriter{
 		ResponseWriter: w,
@@ -64,10 +68,12 @@ func (rw *ResponseWriter) Write(b []byte) (int, error) {
 	return size, err
 }
 
+// Status returns the captured HTTP status code.
 func (rw *ResponseWriter) Status() int {
 	return rw.statusCode
 }
 
+// Size returns the total number of bytes written to the response.
 func (rw *ResponseWriter) Size() int {
 	return rw.size
 }

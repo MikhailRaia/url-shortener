@@ -14,6 +14,7 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/storage"
 )
 
+// Storage implements URLStorage backed by an append-only JSONL file.
 type Storage struct {
 	filePath      string
 	urlMap        map[string]string
@@ -25,6 +26,7 @@ type Storage struct {
 	fileWriteMu   sync.Mutex
 }
 
+// NewStorage creates a file-backed storage at the provided path.
 func NewStorage(filePath string) (*Storage, error) {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {

@@ -10,14 +10,17 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/storage"
 )
 
+// ShortenRequest is the JSON payload for shortening a single URL.
 type ShortenRequest struct {
 	URL string `json:"url"`
 }
 
+// ShortenResponse is the JSON response containing a shortened URL.
 type ShortenResponse struct {
 	Result string `json:"result"`
 }
 
+// HandleShortenJSON handles POST /api/shorten requests with JSON payload.
 func (h *Handler) HandleShortenJSON(w http.ResponseWriter, r *http.Request) {
 	contentType := r.Header.Get("Content-Type")
 	contentEncoding := r.Header.Get("Content-Encoding")

@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// App wires storage, services, middleware, and HTTP handlers and controls the server lifecycle.
 type App struct {
 	config         *config.Config
 	handler        http.Handler
@@ -28,6 +29,7 @@ type App struct {
 	deleteWorker   *worker.DeleteWorkerPool
 }
 
+// NewApp creates and initializes application dependencies and HTTP routes.
 func NewApp(cfg *config.Config) *App {
 	logger.InitLogger()
 
@@ -84,6 +86,7 @@ func NewApp(cfg *config.Config) *App {
 	}
 }
 
+// Run starts the HTTP server and performs graceful shutdown of resources on exit.
 func (a *App) Run() error {
 	log.Info().Str("url", a.config.BaseURL).Str("address", a.config.ServerAddress).Msg("Starting server")
 

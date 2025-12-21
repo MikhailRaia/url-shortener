@@ -7,6 +7,7 @@ import (
 	"strconv"
 )
 
+// Config holds application configuration loaded from flags and environment variables.
 type Config struct {
 	ServerAddress   string
 	BaseURL         string
@@ -16,6 +17,7 @@ type Config struct {
 	MaxProcs        int
 }
 
+// NewConfig returns a Config initialized from command-line flags and environment variables.
 func NewConfig() *Config {
 	cfg := &Config{
 		ServerAddress:   ":8080",

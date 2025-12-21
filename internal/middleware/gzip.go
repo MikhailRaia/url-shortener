@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// GzipWriter wraps a ResponseWriter to support gzip encoding.
 type GzipWriter struct {
 	http.ResponseWriter
 	Writer io.Writer
@@ -24,6 +25,7 @@ func (w GzipWriter) WriteHeader(statusCode int) {
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
+// GzipMiddleware compresses eligible responses with gzip when accepted by the client.
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
@@ -93,6 +95,7 @@ func (w *responseWriterWrapper) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+// GzipReader transparently decompresses gzipped request bodies.
 func GzipReader(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Content-Encoding") != "gzip" {
