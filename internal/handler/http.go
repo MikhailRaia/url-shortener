@@ -19,13 +19,13 @@ import (
 
 // URLService defines operations for creating and resolving shortened URLs.
 type URLService interface {
-	ShortenURL(originalURL string) (string, error)
-	ShortenURLWithUser(originalURL, userID string) (string, error)
-	GetOriginalURL(id string) (string, bool)
-	GetOriginalURLWithDeletedStatus(id string) (string, error)
-	ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
-	ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
-	GetUserURLs(userID string) ([]model.UserURL, error)
+	ShortenURL(ctx context.Context, originalURL string) (string, error)
+	ShortenURLWithUser(ctx context.Context, originalURL, userID string) (string, error)
+	GetOriginalURL(ctx context.Context, id string) (string, bool)
+	GetOriginalURLWithDeletedStatus(ctx context.Context, id string) (string, error)
+	ShortenBatch(ctx context.Context, items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+	ShortenBatchWithUser(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
+	GetUserURLs(ctx context.Context, userID string) ([]model.UserURL, error)
 	DeleteUserURLs(userID string, urlIDs []string) error
 }
 
@@ -140,7 +140,7 @@ func (h *Handler) handleShorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortenedURL, err := h.urlService.ShortenURL(originalURL)
+	shortenedURL, err := h.urlService.ShortenURL(r.Context(), originalURL)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLExists) {
 			w.Header().Set("Content-Type", "text/plain")
@@ -166,7 +166,7 @@ func (h *Handler) handleRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL, err := h.urlService.GetOriginalURLWithDeletedStatus(id)
+	originalURL, err := h.urlService.GetOriginalURLWithDeletedStatus(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLDeleted) {
 			w.WriteHeader(http.StatusGone)
@@ -232,7 +232,7 @@ func (h *Handler) handleShortenBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.urlService.ShortenBatch(items)
+	result, err := h.urlService.ShortenBatch(r.Context(), items)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to shorten batch URLs")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -260,7 +260,7 @@ func (h *Handler) handleGetUserURLs(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Debug().Str("userID", userID).Msg("Found userID in context")
 
-	urls, err := h.urlService.GetUserURLs(userID)
+	urls, err := h.urlService.GetUserURLs(r.Context(), userID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get user URLs")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -313,7 +313,7 @@ func (h *Handler) handleShortenWithAuth(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	shortenedURL, err := h.urlService.ShortenURLWithUser(originalURL, userID)
+	shortenedURL, err := h.urlService.ShortenURLWithUser(r.Context(), originalURL, userID)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLExists) {
 			w.WriteHeader(http.StatusConflict)
@@ -354,7 +354,7 @@ func (h *Handler) HandleShortenJSONWithAuth(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	shortenedURL, err := h.urlService.ShortenURLWithUser(request.URL, userID)
+	shortenedURL, err := h.urlService.ShortenURLWithUser(r.Context(), request.URL, userID)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLExists) {
 			response := ShortenResponse{Result: shortenedURL}
@@ -400,7 +400,7 @@ func (h *Handler) handleShortenBatchWithAuth(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	result, err := h.urlService.ShortenBatchWithUser(items, userID)
+	result, err := h.urlService.ShortenBatchWithUser(r.Context(), items, userID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to shorten batch URLs with user")
 		w.WriteHeader(http.StatusInternalServerError)

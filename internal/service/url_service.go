@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"github.com/MikhailRaia/url-shortener/internal/model"
 	"github.com/MikhailRaia/url-shortener/internal/storage"
@@ -22,7 +23,7 @@ func NewURLService(storage storage.URLStorage, baseURL string) *URLService {
 }
 
 // ShortenURL creates a short URL and returns its absolute form.
-func (s *URLService) ShortenURL(originalURL string) (string, error) {
+func (s *URLService) ShortenURL(ctx context.Context, originalURL string) (string, error) {
 	id, err := s.storage.Save(originalURL)
 	if err != nil {
 		if err == storage.ErrURLExists && id != "" {
@@ -37,17 +38,17 @@ func (s *URLService) ShortenURL(originalURL string) (string, error) {
 }
 
 // GetOriginalURL resolves an ID to the original URL if it exists and not deleted.
-func (s *URLService) GetOriginalURL(id string) (string, bool) {
+func (s *URLService) GetOriginalURL(ctx context.Context, id string) (string, bool) {
 	return s.storage.Get(id)
 }
 
 // GetOriginalURLWithDeletedStatus resolves an ID and reports deletion via error.
-func (s *URLService) GetOriginalURLWithDeletedStatus(id string) (string, error) {
+func (s *URLService) GetOriginalURLWithDeletedStatus(ctx context.Context, id string) (string, error) {
 	return s.storage.GetWithDeletedStatus(id)
 }
 
 // ShortenBatch creates short URLs for a batch of items.
-func (s *URLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
+func (s *URLService) ShortenBatch(ctx context.Context, items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
 	idMap, err := s.storage.SaveBatch(items)
 	if err != nil {
 		return nil, fmt.Errorf("error saving batch: %w", err)
@@ -71,7 +72,7 @@ func (s *URLService) ShortenBatch(items []model.BatchRequestItem) ([]model.Batch
 }
 
 // ShortenURLWithUser creates a short URL associated with a user.
-func (s *URLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
+func (s *URLService) ShortenURLWithUser(ctx context.Context, originalURL, userID string) (string, error) {
 	id, err := s.storage.SaveWithUser(originalURL, userID)
 	if err != nil {
 		if err == storage.ErrURLExists && id != "" {
@@ -86,7 +87,7 @@ func (s *URLService) ShortenURLWithUser(originalURL, userID string) (string, err
 }
 
 // ShortenBatchWithUser creates short URLs for a batch and associates them with a user.
-func (s *URLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
+func (s *URLService) ShortenBatchWithUser(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
 	idMap, err := s.storage.SaveBatchWithUser(items, userID)
 	if err != nil {
 		return nil, fmt.Errorf("error saving batch: %w", err)
@@ -110,7 +111,7 @@ func (s *URLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID
 }
 
 // GetUserURLs returns all URLs belonging to a user, excluding deleted ones.
-func (s *URLService) GetUserURLs(userID string) ([]model.UserURL, error) {
+func (s *URLService) GetUserURLs(ctx context.Context, userID string) ([]model.UserURL, error) {
 	urls, err := s.storage.GetUserURLs(userID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting user URLs: %w", err)

@@ -19,7 +19,7 @@ func writeHeapProfile(path string) {
 	f, err := os.Create(path)
 	if err == nil {
 		runtime.GC()
-		_ = pprof.WriteHeapProfile(f)
+		pprof.WriteHeapProfile(f)
 		_ = f.Close()
 	}
 }

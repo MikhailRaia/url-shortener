@@ -53,7 +53,7 @@ func (h *Handler) HandleShortenJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortenedURL, err := h.urlService.ShortenURL(request.URL)
+	shortenedURL, err := h.urlService.ShortenURL(r.Context(), request.URL)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLExists) {
 			response := ShortenResponse{
