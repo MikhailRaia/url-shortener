@@ -49,3 +49,21 @@ func TestGenerateID(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkGenerateID8(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		GenerateID(8)
+	}
+}
+
+func BenchmarkGenerateID16(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		GenerateID(16)
+	}
+}
+
+func BenchmarkGenerateID32(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		GenerateID(32)
+	}
+}

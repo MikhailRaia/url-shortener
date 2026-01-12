@@ -13,6 +13,7 @@ const (
 	analyzerDoc  = "reports usage of panic, log.Fatal, and os.Exit outside main function"
 )
 
+// Analyzer checks for forbidden function calls (panic, log.Fatal, os.Exit) in the code.
 var Analyzer = &analysis.Analyzer{
 	Name:     analyzerName,
 	Doc:      analyzerDoc,

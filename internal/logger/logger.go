@@ -57,11 +57,13 @@ func NewResponseWriter(w http.ResponseWriter) *ResponseWriter {
 	}
 }
 
+// WriteHeader captures the status code and writes the header to the underlying ResponseWriter.
 func (rw *ResponseWriter) WriteHeader(statusCode int) {
 	rw.statusCode = statusCode
 	rw.ResponseWriter.WriteHeader(statusCode)
 }
 
+// Write writes the byte slice to the underlying ResponseWriter and updates the size counter.
 func (rw *ResponseWriter) Write(b []byte) (int, error) {
 	size, err := rw.ResponseWriter.Write(b)
 	rw.size += size

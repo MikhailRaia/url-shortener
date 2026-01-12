@@ -8,13 +8,21 @@ import (
 )
 
 // Config holds application configuration loaded from flags and environment variables.
+// All fields can be overridden by environment variables with the prefix pattern
+// (e.g., SERVER_ADDRESS, BASE_URL, DATABASE_DSN).
 type Config struct {
-	ServerAddress   string
-	BaseURL         string
+	// ServerAddress is the TCP address the server listens on (flag: -a, default: :8080)
+	ServerAddress string
+	// BaseURL is the base URL for shortened URLs (flag: -b, default: http://localhost:8080)
+	BaseURL string
+	// FileStoragePath is the path to file-based storage (flag: -f, default: ~/.url-shortener/storage.json)
 	FileStoragePath string
-	DatabaseDSN     string
-	JWTSecretKey    string
-	MaxProcs        int
+	// DatabaseDSN is the PostgreSQL connection string (flag: -d, optional)
+	DatabaseDSN string
+	// JWTSecretKey is the secret key for signing JWT tokens (flag: -s)
+	JWTSecretKey string
+	// MaxProcs is the GOMAXPROCS value (flag: -p, 0=auto)
+	MaxProcs int
 }
 
 // NewConfig returns a Config initialized from command-line flags and environment variables.

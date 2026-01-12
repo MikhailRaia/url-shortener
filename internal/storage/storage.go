@@ -6,6 +6,7 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/model"
 )
 
+// Storage operation errors.
 var (
 	// ErrURLExists indicates the submitted URL has already been shortened.
 	ErrURLExists = errors.New("url already exists")
