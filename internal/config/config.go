@@ -4,16 +4,20 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
+// Config holds application configuration loaded from flags and environment variables.
 type Config struct {
 	ServerAddress   string
 	BaseURL         string
 	FileStoragePath string
 	DatabaseDSN     string
 	JWTSecretKey    string
+	MaxProcs        int
 }
 
+// NewConfig returns a Config initialized from command-line flags and environment variables.
 func NewConfig() *Config {
 	cfg := &Config{
 		ServerAddress:   ":8080",
@@ -21,6 +25,7 @@ func NewConfig() *Config {
 		FileStoragePath: getDefaultStoragePath(),
 		DatabaseDSN:     "",
 		JWTSecretKey:    "default-secret-key-change-in-production",
+		MaxProcs:        0,
 	}
 
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address (e.g. localhost:8888)")
@@ -28,6 +33,7 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "Path to file storage")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database connection string (e.g. postgres://username:password@localhost:5432/database_name)")
 	flag.StringVar(&cfg.JWTSecretKey, "s", cfg.JWTSecretKey, "JWT secret key for signing tokens")
+	flag.IntVar(&cfg.MaxProcs, "p", cfg.MaxProcs, "GOMAXPROCS value (0=auto)")
 
 	flag.Parse()
 
@@ -49,6 +55,12 @@ func NewConfig() *Config {
 
 	if envJWTSecretKey := os.Getenv("JWT_SECRET_KEY"); envJWTSecretKey != "" {
 		cfg.JWTSecretKey = envJWTSecretKey
+	}
+
+	if envMaxProcs := os.Getenv("MAX_PROCS"); envMaxProcs != "" {
+		if n, err := strconv.Atoi(envMaxProcs); err == nil {
+			cfg.MaxProcs = n
+		}
 	}
 
 	return cfg

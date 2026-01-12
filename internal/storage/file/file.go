@@ -14,6 +14,7 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/storage"
 )
 
+// Storage implements URLStorage backed by an append-only JSONL file.
 type Storage struct {
 	filePath      string
 	urlMap        map[string]string
@@ -21,10 +22,11 @@ type Storage struct {
 	userURLs      map[string][]model.URL
 	deletedMap    map[string]bool
 	idCounter     int
-	mutex         sync.RWMutex
+	mu            sync.RWMutex
 	fileWriteMu   sync.Mutex
 }
 
+// NewStorage creates a file-backed storage at the provided path.
 func NewStorage(filePath string) (*Storage, error) {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -48,15 +50,15 @@ func NewStorage(filePath string) (*Storage, error) {
 }
 
 func (s *Storage) Save(originalURL string) (string, error) {
-	s.mutex.Lock()
+	s.mu.Lock()
 	if existingID, exists := s.reverseURLMap[originalURL]; exists {
-		s.mutex.Unlock()
+		s.mu.Unlock()
 		return existingID, storage.ErrURLExists
 	}
 
 	id, err := generator.GenerateID(8)
 	if err != nil {
-		s.mutex.Unlock()
+		s.mu.Unlock()
 		return "", err
 	}
 
@@ -64,7 +66,7 @@ func (s *Storage) Save(originalURL string) (string, error) {
 	uuid := strconv.Itoa(s.idCounter)
 	s.urlMap[id] = originalURL
 	s.reverseURLMap[originalURL] = id
-	s.mutex.Unlock()
+	s.mu.Unlock()
 
 	record := model.URLRecord{
 		UUID:        uuid,
@@ -82,8 +84,8 @@ func (s *Storage) Save(originalURL string) (string, error) {
 }
 
 func (s *Storage) Get(id string) (string, bool) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	originalURL, found := s.urlMap[id]
 	if !found {
@@ -98,8 +100,8 @@ func (s *Storage) Get(id string) (string, bool) {
 }
 
 func (s *Storage) GetWithDeletedStatus(id string) (string, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	originalURL, found := s.urlMap[id]
 	if !found {
@@ -117,16 +119,16 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 	result := make(map[string]string)
 
 	for _, item := range items {
-		s.mutex.Lock()
+		s.mu.Lock()
 		if existingID, exists := s.reverseURLMap[item.OriginalURL]; exists {
-			s.mutex.Unlock()
+			s.mu.Unlock()
 			result[item.CorrelationID] = existingID
 			continue
 		}
 
 		id, err := generator.GenerateID(8)
 		if err != nil {
-			s.mutex.Unlock()
+			s.mu.Unlock()
 			return nil, fmt.Errorf("failed to generate ID: %w", err)
 		}
 
@@ -134,7 +136,7 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 		uuid := strconv.Itoa(s.idCounter)
 		s.urlMap[id] = item.OriginalURL
 		s.reverseURLMap[item.OriginalURL] = id
-		s.mutex.Unlock()
+		s.mu.Unlock()
 
 		record := model.URLRecord{
 			UUID:        uuid,
@@ -224,15 +226,15 @@ func (s *Storage) saveRecordToFile(record model.URLRecord) error {
 }
 
 func (s *Storage) SaveWithUser(originalURL, userID string) (string, error) {
-	s.mutex.Lock()
+	s.mu.Lock()
 	if existingID, exists := s.reverseURLMap[originalURL]; exists {
-		s.mutex.Unlock()
+		s.mu.Unlock()
 		return existingID, storage.ErrURLExists
 	}
 
 	id, err := generator.GenerateID(8)
 	if err != nil {
-		s.mutex.Unlock()
+		s.mu.Unlock()
 		return "", err
 	}
 
@@ -247,7 +249,7 @@ func (s *Storage) SaveWithUser(originalURL, userID string) (string, error) {
 		UserID:      userID,
 	}
 	s.userURLs[userID] = append(s.userURLs[userID], url)
-	s.mutex.Unlock()
+	s.mu.Unlock()
 
 	record := model.URLRecord{
 		UUID:        uuid,
@@ -268,16 +270,16 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 	result := make(map[string]string)
 
 	for _, item := range items {
-		s.mutex.Lock()
+		s.mu.Lock()
 		if existingID, exists := s.reverseURLMap[item.OriginalURL]; exists {
-			s.mutex.Unlock()
+			s.mu.Unlock()
 			result[item.CorrelationID] = existingID
 			continue
 		}
 
 		id, err := generator.GenerateID(8)
 		if err != nil {
-			s.mutex.Unlock()
+			s.mu.Unlock()
 			return nil, fmt.Errorf("failed to generate ID: %w", err)
 		}
 
@@ -292,7 +294,7 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 			UserID:      userID,
 		}
 		s.userURLs[userID] = append(s.userURLs[userID], url)
-		s.mutex.Unlock()
+		s.mu.Unlock()
 
 		record := model.URLRecord{
 			UUID:        uuid,
@@ -313,8 +315,8 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 }
 
 func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	urls, exists := s.userURLs[userID]
 	if !exists {
@@ -335,8 +337,8 @@ func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 }
 
 func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	userURLs, exists := s.userURLs[userID]
 	if !exists {

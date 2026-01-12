@@ -8,6 +8,7 @@ import (
 	"sync"
 )
 
+// Storage implements in-memory URLStorage for testing and development.
 type Storage struct {
 	urlMap     map[string]string
 	userURLs   map[string][]model.URL
@@ -15,6 +16,7 @@ type Storage struct {
 	mutex      sync.RWMutex
 }
 
+// NewStorage creates a new in-memory storage instance.
 func NewStorage() *Storage {
 	return &Storage{
 		urlMap:     make(map[string]string),

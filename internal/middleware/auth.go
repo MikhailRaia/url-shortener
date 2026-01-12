@@ -11,18 +11,22 @@ import (
 
 type contextKey string
 
+// UserIDKey is the context key used to store authenticated user ID.
 const UserIDKey contextKey = "userID"
 
+// AuthMiddleware manages user authentication using JWT cookies.
 type AuthMiddleware struct {
 	jwtService *auth.JWTService
 }
 
+// NewAuthMiddleware creates an AuthMiddleware with the provided JWT service.
 func NewAuthMiddleware(jwtService *auth.JWTService) *AuthMiddleware {
 	return &AuthMiddleware{
 		jwtService: jwtService,
 	}
 }
 
+// AuthenticateUser ensures a user is present, issuing a token and cookie if needed.
 func (a *AuthMiddleware) AuthenticateUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var userID string
@@ -77,6 +81,7 @@ func (a *AuthMiddleware) AuthenticateUser(next http.Handler) http.Handler {
 	})
 }
 
+// RequireAuth enforces that a valid auth cookie is present.
 func (a *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("auth_token")
@@ -96,6 +101,7 @@ func (a *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 	})
 }
 
+// GetUserIDFromContext extracts the authenticated user ID from context.
 func GetUserIDFromContext(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(UserIDKey).(string)
 	return userID, ok

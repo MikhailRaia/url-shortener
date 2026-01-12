@@ -14,10 +14,12 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
+// Storage implements URLStorage using PostgreSQL.
 type Storage struct {
 	pool *pgxpool.Pool
 }
 
+// NewStorage connects to PostgreSQL using DSN and prepares schema.
 func NewStorage(dsn string) (*Storage, error) {
 	if dsn == "" {
 		return nil, errors.New("database connection string is empty")
@@ -174,6 +176,7 @@ func (s *Storage) GetWithDeletedStatus(id string) (string, error) {
 	return originalURL, nil
 }
 
+// Ping verifies the database connection is alive.
 func (s *Storage) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
 }
@@ -243,6 +246,7 @@ func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, 
 	return result, nil
 }
 
+// Close releases the underlying connection pool.
 func (s *Storage) Close() {
 	if s.pool != nil {
 		s.pool.Close()

@@ -9,25 +9,31 @@ import (
 )
 
 var (
+	// ErrInvalidToken indicates the token is malformed or could not be verified.
 	ErrInvalidToken = errors.New("invalid token")
+	// ErrExpiredToken indicates the token has expired.
 	ErrExpiredToken = errors.New("token expired")
 )
 
+// Claims represents JWT claims including the application user identifier.
 type Claims struct {
 	UserID string `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
+// JWTService handles issuing and validating JWT tokens.
 type JWTService struct {
 	secretKey []byte
 }
 
+// NewJWTService creates a JWT service using the provided secret key.
 func NewJWTService(secretKey string) *JWTService {
 	return &JWTService{
 		secretKey: []byte(secretKey),
 	}
 }
 
+// GenerateToken issues a signed JWT for the given user ID.
 func (j *JWTService) GenerateToken(userID string) (string, error) {
 	claims := Claims{
 		UserID: userID,
@@ -46,6 +52,7 @@ func (j *JWTService) GenerateToken(userID string) (string, error) {
 	return tokenString, nil
 }
 
+// ValidateToken parses and validates a token string and returns its claims.
 func (j *JWTService) ValidateToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		// Проверяем, что используется именно HS256

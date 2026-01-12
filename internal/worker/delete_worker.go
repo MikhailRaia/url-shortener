@@ -8,15 +8,18 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// DeleteRequest describes a user's URLs to delete.
 type DeleteRequest struct {
 	UserID string
 	URLIDs []string
 }
 
+// DeleteService deletes user URLs in the underlying storage.
 type DeleteService interface {
 	DeleteUserURLs(userID string, urlIDs []string) error
 }
 
+// DeleteWorkerPool batches and processes asynchronous delete requests.
 type DeleteWorkerPool struct {
 	service      DeleteService
 	requestChan  chan DeleteRequest
@@ -29,6 +32,7 @@ type DeleteWorkerPool struct {
 	shutdownOnce sync.Once
 }
 
+// Config configures the worker pool behavior.
 type Config struct {
 	WorkerCount  int           // Количество воркеров
 	BufferSize   int           // Размер буфера канала
@@ -36,6 +40,7 @@ type Config struct {
 	BatchTimeout time.Duration // Таймаут для накопления батча
 }
 
+// DefaultConfig returns sane defaults for the worker pool.
 func DefaultConfig() Config {
 	return Config{
 		WorkerCount:  5,
@@ -45,6 +50,7 @@ func DefaultConfig() Config {
 	}
 }
 
+// NewDeleteWorkerPool creates a new delete worker pool with the given config.
 func NewDeleteWorkerPool(service DeleteService, config Config) *DeleteWorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -61,6 +67,7 @@ func NewDeleteWorkerPool(service DeleteService, config Config) *DeleteWorkerPool
 	return pool
 }
 
+// Start launches worker goroutines to process delete requests.
 func (p *DeleteWorkerPool) Start() {
 	log.Info().
 		Int("workers", p.workerCount).
@@ -80,8 +87,9 @@ func (p *DeleteWorkerPool) worker(id int) {
 	log.Debug().Int("workerID", id).Msg("Worker started")
 
 	batch := make(map[string][]string) // userID -> []urlIDs
-	ticker := time.NewTicker(p.batchTimeout)
-	defer ticker.Stop()
+	totalURLs := 0
+	var timer *time.Timer
+	var timerC <-chan time.Time
 
 	processBatch := func() {
 		if len(batch) == 0 {
@@ -110,7 +118,39 @@ func (p *DeleteWorkerPool) worker(id int) {
 			}
 		}
 
-		batch = make(map[string][]string)
+		for k := range batch {
+			delete(batch, k)
+		}
+		totalURLs = 0
+	}
+
+	startOrResetTimer := func() {
+		if timer == nil {
+			timer = time.NewTimer(p.batchTimeout)
+			timerC = timer.C
+			return
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(p.batchTimeout)
+		timerC = timer.C
+	}
+
+	stopTimer := func() {
+		if timer == nil {
+			return
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timerC = nil
 	}
 
 	for {
@@ -118,6 +158,7 @@ func (p *DeleteWorkerPool) worker(id int) {
 		case <-p.ctx.Done():
 			log.Debug().Int("workerID", id).Msg("Worker shutting down")
 			processBatch()
+			stopTimer()
 			return
 
 		case req, ok := <-p.requestChan:
@@ -125,27 +166,33 @@ func (p *DeleteWorkerPool) worker(id int) {
 				// Канал закрыт - обрабатываем оставшиеся запросы и выходим
 				log.Debug().Int("workerID", id).Msg("Request channel closed, processing remaining batch")
 				processBatch()
+				stopTimer()
 				return
 			}
 
+			batchWasEmpty := len(batch) == 0
 			batch[req.UserID] = append(batch[req.UserID], req.URLIDs...)
-
-			totalURLs := 0
-			for _, urls := range batch {
-				totalURLs += len(urls)
-			}
+			totalURLs += len(req.URLIDs)
 
 			if totalURLs >= p.batchSize {
 				processBatch()
-				ticker.Reset(p.batchTimeout)
+				if len(batch) == 0 {
+					stopTimer()
+				} else {
+					startOrResetTimer()
+				}
+			} else if batchWasEmpty {
+				startOrResetTimer()
 			}
 
-		case <-ticker.C:
+		case <-timerC:
 			processBatch()
+			stopTimer()
 		}
 	}
 }
 
+// Submit queues a delete request for processing.
 func (p *DeleteWorkerPool) Submit(userID string, urlIDs []string) error {
 	select {
 	case <-p.ctx.Done():
@@ -171,6 +218,7 @@ func (p *DeleteWorkerPool) Submit(userID string, urlIDs []string) error {
 	}
 }
 
+// Shutdown gracefully stops workers, waiting up to the provided timeout.
 func (p *DeleteWorkerPool) Shutdown(timeout time.Duration) error {
 	var shutdownErr error
 
@@ -199,6 +247,7 @@ func (p *DeleteWorkerPool) Shutdown(timeout time.Duration) error {
 	return shutdownErr
 }
 
+// Stats returns current pool statistics.
 func (p *DeleteWorkerPool) Stats() PoolStats {
 	return PoolStats{
 		QueueSize:   len(p.requestChan),
@@ -207,6 +256,7 @@ func (p *DeleteWorkerPool) Stats() PoolStats {
 	}
 }
 
+// PoolStats contains worker pool metrics.
 type PoolStats struct {
 	QueueSize   int
 	QueueCap    int
