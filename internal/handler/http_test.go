@@ -14,56 +14,55 @@ import (
 )
 
 type mockURLService struct {
-	shortenURLFunc                      func(originalURL string) (string, error)
-	shortenURLWithUserFunc              func(originalURL, userID string) (string, error)
-	getOriginalURLFunc                  func(id string) (string, bool)
-	getOriginalURLWithDeletedStatusFunc func(id string) (string, bool, error)
-	shortenBatchFunc                    func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
-	shortenBatchWithUserFunc            func(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
-	getUserURLsFunc                     func(userID string) ([]model.UserURL, error)
+	shortenURLFunc                      func(ctx context.Context, originalURL string) (string, error)
+	shortenURLWithUserFunc              func(ctx context.Context, originalURL, userID string) (string, error)
+	getOriginalURLFunc                  func(ctx context.Context, id string) (string, bool)
+	getOriginalURLWithDeletedStatusFunc func(ctx context.Context, id string) (string, error)
+	shortenBatchFunc                    func(ctx context.Context, items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+	shortenBatchWithUserFunc            func(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
+	getUserURLsFunc                     func(ctx context.Context, userID string) ([]model.UserURL, error)
 	deleteUserURLsFunc                  func(userID string, urlIDs []string) error
 }
 
-func (m *mockURLService) ShortenURL(originalURL string) (string, error) {
-	return m.shortenURLFunc(originalURL)
+func (m *mockURLService) ShortenURL(ctx context.Context, originalURL string) (string, error) {
+	return m.shortenURLFunc(ctx, originalURL)
 }
 
-func (m *mockURLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
+func (m *mockURLService) ShortenURLWithUser(ctx context.Context, originalURL, userID string) (string, error) {
 	if m.shortenURLWithUserFunc != nil {
-		return m.shortenURLWithUserFunc(originalURL, userID)
+		return m.shortenURLWithUserFunc(ctx, originalURL, userID)
 	}
 	return "", nil
 }
 
-func (m *mockURLService) GetOriginalURL(id string) (string, bool) {
-	return m.getOriginalURLFunc(id)
+func (m *mockURLService) GetOriginalURL(ctx context.Context, id string) (string, bool) {
+	return m.getOriginalURLFunc(ctx, id)
 }
 
-func (m *mockURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
+func (m *mockURLService) ShortenBatch(ctx context.Context, items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
 	if m.shortenBatchFunc != nil {
-		return m.shortenBatchFunc(items)
+		return m.shortenBatchFunc(ctx, items)
 	}
 	return []model.BatchResponseItem{}, nil
 }
 
-func (m *mockURLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
+func (m *mockURLService) ShortenBatchWithUser(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
 	if m.shortenBatchWithUserFunc != nil {
-		return m.shortenBatchWithUserFunc(items, userID)
+		return m.shortenBatchWithUserFunc(ctx, items, userID)
 	}
 	return []model.BatchResponseItem{}, nil
 }
 
-func (m *mockURLService) GetUserURLs(userID string) ([]model.UserURL, error) {
+func (m *mockURLService) GetUserURLs(ctx context.Context, userID string) ([]model.UserURL, error) {
 	if m.getUserURLsFunc != nil {
-		return m.getUserURLsFunc(userID)
+		return m.getUserURLsFunc(ctx, userID)
 	}
 	return []model.UserURL{}, nil
 }
 
-func (m *mockURLService) GetOriginalURLWithDeletedStatus(id string) (string, error) {
+func (m *mockURLService) GetOriginalURLWithDeletedStatus(ctx context.Context, id string) (string, error) {
 	if m.getOriginalURLWithDeletedStatusFunc != nil {
-		url, _, err := m.getOriginalURLWithDeletedStatusFunc(id)
-		return url, err
+		return m.getOriginalURLWithDeletedStatusFunc(ctx, id)
 	}
 	return "", nil
 }
@@ -132,7 +131,7 @@ func TestHandler_handleShorten(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockService := &mockURLService{
-				shortenURLFunc: func(originalURL string) (string, error) {
+				shortenURLFunc: func(ctx context.Context, originalURL string) (string, error) {
 					return tt.mockShortenURL, tt.mockShortenErr
 				},
 			}
@@ -201,8 +200,8 @@ func TestHandler_handleRedirect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockService := &mockURLService{
-				getOriginalURLWithDeletedStatusFunc: func(id string) (string, bool, error) {
-					return tt.mockOrigURL, tt.mockFound, tt.mockError
+				getOriginalURLWithDeletedStatusFunc: func(ctx context.Context, id string) (string, error) {
+					return tt.mockOrigURL, tt.mockError
 				},
 			}
 

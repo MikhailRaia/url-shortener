@@ -10,6 +10,7 @@ require (
 	github.com/jackc/pgx/v4 v4.18.3
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.8.4
+	golang.org/x/tools v0.40.0
 )
 
 require (
@@ -25,7 +26,9 @@ require (
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	golang.org/x/crypto v0.20.0 // indirect
-	golang.org/x/sys v0.17.0 // indirect
+	golang.org/x/mod v0.32.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,55 +14,55 @@ import (
 )
 
 type MockURLService struct {
-	ShortenURLFunc                      func(originalURL string) (string, error)
-	ShortenURLWithUserFunc              func(originalURL, userID string) (string, error)
-	GetOriginalURLFunc                  func(id string) (string, bool)
-	GetOriginalURLWithDeletedStatusFunc func(id string) (string, error)
-	ShortenBatchFunc                    func(items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
-	ShortenBatchWithUserFunc            func(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
-	GetUserURLsFunc                     func(userID string) ([]model.UserURL, error)
+	ShortenURLFunc                      func(ctx context.Context, originalURL string) (string, error)
+	ShortenURLWithUserFunc              func(ctx context.Context, originalURL, userID string) (string, error)
+	GetOriginalURLFunc                  func(ctx context.Context, id string) (string, bool)
+	GetOriginalURLWithDeletedStatusFunc func(ctx context.Context, id string) (string, error)
+	ShortenBatchFunc                    func(ctx context.Context, items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+	ShortenBatchWithUserFunc            func(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
+	GetUserURLsFunc                     func(ctx context.Context, userID string) ([]model.UserURL, error)
 	DeleteUserURLsFunc                  func(userID string, urlIDs []string) error
 }
 
-func (m *MockURLService) ShortenURL(originalURL string) (string, error) {
-	return m.ShortenURLFunc(originalURL)
+func (m *MockURLService) ShortenURL(ctx context.Context, originalURL string) (string, error) {
+	return m.ShortenURLFunc(ctx, originalURL)
 }
 
-func (m *MockURLService) GetOriginalURL(id string) (string, bool) {
-	return m.GetOriginalURLFunc(id)
+func (m *MockURLService) GetOriginalURL(ctx context.Context, id string) (string, bool) {
+	return m.GetOriginalURLFunc(ctx, id)
 }
 
-func (m *MockURLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
+func (m *MockURLService) ShortenURLWithUser(ctx context.Context, originalURL, userID string) (string, error) {
 	if m.ShortenURLWithUserFunc != nil {
-		return m.ShortenURLWithUserFunc(originalURL, userID)
+		return m.ShortenURLWithUserFunc(ctx, originalURL, userID)
 	}
 	return "", nil
 }
 
-func (m *MockURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
+func (m *MockURLService) ShortenBatch(ctx context.Context, items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
 	if m.ShortenBatchFunc != nil {
-		return m.ShortenBatchFunc(items)
+		return m.ShortenBatchFunc(ctx, items)
 	}
 	return []model.BatchResponseItem{}, nil
 }
 
-func (m *MockURLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
+func (m *MockURLService) ShortenBatchWithUser(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
 	if m.ShortenBatchWithUserFunc != nil {
-		return m.ShortenBatchWithUserFunc(items, userID)
+		return m.ShortenBatchWithUserFunc(ctx, items, userID)
 	}
 	return []model.BatchResponseItem{}, nil
 }
 
-func (m *MockURLService) GetUserURLs(userID string) ([]model.UserURL, error) {
+func (m *MockURLService) GetUserURLs(ctx context.Context, userID string) ([]model.UserURL, error) {
 	if m.GetUserURLsFunc != nil {
-		return m.GetUserURLsFunc(userID)
+		return m.GetUserURLsFunc(ctx, userID)
 	}
 	return []model.UserURL{}, nil
 }
 
-func (m *MockURLService) GetOriginalURLWithDeletedStatus(id string) (string, error) {
+func (m *MockURLService) GetOriginalURLWithDeletedStatus(ctx context.Context, id string) (string, error) {
 	if m.GetOriginalURLWithDeletedStatusFunc != nil {
-		return m.GetOriginalURLWithDeletedStatusFunc(id)
+		return m.GetOriginalURLWithDeletedStatusFunc(ctx, id)
 	}
 	return "", nil
 }
@@ -78,7 +79,7 @@ func TestHandleShortenJSON(t *testing.T) {
 		name               string
 		requestBody        interface{}
 		contentType        string
-		mockShortenURLFunc func(originalURL string) (string, error)
+		mockShortenURLFunc func(ctx context.Context, originalURL string) (string, error)
 		expectedStatus     int
 		expectedResponse   *ShortenResponse
 	}{
@@ -88,7 +89,7 @@ func TestHandleShortenJSON(t *testing.T) {
 				URL: "https://practicum.yandex.ru",
 			},
 			contentType: "application/json",
-			mockShortenURLFunc: func(originalURL string) (string, error) {
+			mockShortenURLFunc: func(ctx context.Context, originalURL string) (string, error) {
 				return "http://localhost:8080/abc123", nil
 			},
 			expectedStatus: http.StatusCreated,
@@ -102,7 +103,7 @@ func TestHandleShortenJSON(t *testing.T) {
 				URL: "",
 			},
 			contentType: "application/json",
-			mockShortenURLFunc: func(originalURL string) (string, error) {
+			mockShortenURLFunc: func(ctx context.Context, originalURL string) (string, error) {
 				return "", nil
 			},
 			expectedStatus:   http.StatusBadRequest,
@@ -112,7 +113,7 @@ func TestHandleShortenJSON(t *testing.T) {
 			name:        "Invalid content type",
 			requestBody: ShortenRequest{URL: "https://practicum.yandex.ru"},
 			contentType: "text/plain",
-			mockShortenURLFunc: func(originalURL string) (string, error) {
+			mockShortenURLFunc: func(ctx context.Context, originalURL string) (string, error) {
 				return "", nil
 			},
 			expectedStatus:   http.StatusBadRequest,
@@ -122,7 +123,7 @@ func TestHandleShortenJSON(t *testing.T) {
 			name:        "Invalid JSON format",
 			requestBody: "not a json",
 			contentType: "application/json",
-			mockShortenURLFunc: func(originalURL string) (string, error) {
+			mockShortenURLFunc: func(ctx context.Context, originalURL string) (string, error) {
 				return "", nil
 			},
 			expectedStatus:   http.StatusBadRequest,
@@ -134,7 +135,7 @@ func TestHandleShortenJSON(t *testing.T) {
 				URL: "https://practicum.yandex.ru",
 			},
 			contentType: "application/json",
-			mockShortenURLFunc: func(originalURL string) (string, error) {
+			mockShortenURLFunc: func(ctx context.Context, originalURL string) (string, error) {
 				return "", errors.New("service error")
 			},
 			expectedStatus:   http.StatusInternalServerError,
@@ -146,7 +147,7 @@ func TestHandleShortenJSON(t *testing.T) {
 				URL: "https://practicum.yandex.ru",
 			},
 			contentType: "application/json",
-			mockShortenURLFunc: func(originalURL string) (string, error) {
+			mockShortenURLFunc: func(ctx context.Context, originalURL string) (string, error) {
 				return "http://localhost:8080/existing123", storage.ErrURLExists
 			},
 			expectedStatus: http.StatusConflict,

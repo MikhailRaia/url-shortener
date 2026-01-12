@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -107,7 +108,7 @@ func TestURLService_ShortenURL(t *testing.T) {
 			}
 
 			service := NewURLService(mockStorage, baseURL)
-			got, err := service.ShortenURL(tt.originalURL)
+			got, err := service.ShortenURL(context.Background(), tt.originalURL)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("URLService.ShortenURL() error = %v, wantErr %v", err, tt.wantErr)
@@ -162,7 +163,7 @@ func TestURLService_GetOriginalURL(t *testing.T) {
 			}
 
 			service := NewURLService(mockStorage, baseURL)
-			gotURL, gotFound := service.GetOriginalURL(tt.id)
+			gotURL, gotFound := service.GetOriginalURL(context.Background(), tt.id)
 
 			if gotFound != tt.wantFound {
 				t.Errorf("URLService.GetOriginalURL() found = %v, want %v", gotFound, tt.wantFound)
