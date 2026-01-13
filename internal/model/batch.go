@@ -11,14 +11,3 @@ type BatchResponseItem struct {
 	CorrelationID string `json:"correlation_id"`
 	ShortURL      string `json:"short_url"`
 }
-
-// generate:reset
-type ResetTestStruct struct {
-	IntField    int
-	StringField string
-	BoolField   bool
-	SliceField  []string
-	MapField    map[string]string
-	PointerStr  *string
-	PointerInt  *int
-}
