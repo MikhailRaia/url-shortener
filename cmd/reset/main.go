@@ -12,7 +12,9 @@ import (
 	"text/template"
 )
 
+// FilterConfig contains configuration for directory filtering during package scanning.
 type FilterConfig struct {
+	// ExcludePatterns is a list of patterns to exclude from scanning.
 	ExcludePatterns []string
 }
 
@@ -125,20 +127,27 @@ func matchPattern(dirName, fullPath, pattern string) bool {
 
 // PackageResets represents a Go package and the structures within it that need Reset() methods generated.
 type PackageResets struct {
-	Name    string
-	Path    string
+	// Name is the package name.
+	Name string
+	// Path is the directory path of the package.
+	Path string
+	// Structs is the list of structures that need Reset() methods.
 	Structs []StructReset
 }
 
 // StructReset represents a structure for which a Reset() method should be generated.
 type StructReset struct {
-	Name   string
+	// Name is the name of the structure.
+	Name string
+	// Fields is the list of fields in the structure.
 	Fields []FieldReset
 }
 
 // FieldReset represents a field of a structure that needs to be reset.
 type FieldReset struct {
+	// Name is the name of the field.
 	Name string
+	// Type is the AST expression representing the field's type.
 	Type ast.Expr
 }
 
