@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"go/ast"
+	"go/types"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -49,15 +50,30 @@ func checkCall(pass *analysis.Pass, callExpr *ast.CallExpr) {
 
 func checkSelectorExpr(pass *analysis.Pass, selectorExpr *ast.SelectorExpr, callExpr *ast.CallExpr) {
 	if ident, ok := selectorExpr.X.(*ast.Ident); ok {
-		pkg := ident.Name
 		fn := selectorExpr.Sel.Name
 
+		if pass.TypesInfo == nil {
+			return
+		}
+
+		obj := pass.TypesInfo.Uses[ident]
+		if obj == nil {
+			return
+		}
+
+		pkgName, ok := obj.(*types.PkgName)
+		if !ok {
+			return
+		}
+
+		pkgPath := pkgName.Imported().Path()
+
 		switch {
-		case pkg == "log" && fn == "Fatal":
+		case pkgPath == "log" && fn == "Fatal":
 			if !isInMainFunction(pass, callExpr) {
 				pass.Reportf(callExpr.Pos(), "log.Fatal is forbidden outside main function")
 			}
-		case pkg == "os" && fn == "Exit":
+		case pkgPath == "os" && fn == "Exit":
 			if !isInMainFunction(pass, callExpr) {
 				pass.Reportf(callExpr.Pos(), "os.Exit is forbidden outside main function")
 			}

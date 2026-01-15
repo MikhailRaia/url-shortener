@@ -15,19 +15,12 @@ import (
 )
 
 var (
-	buildVersion string
-	buildDate    string
-	buildCommit  string
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
 )
 
 var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
-
-func orNA(s string) string {
-	if s == "" {
-		return "N/A"
-	}
-	return s
-}
 
 func writeHeapProfile(path string) {
 	f, err := os.Create(path)
@@ -39,9 +32,9 @@ func writeHeapProfile(path string) {
 }
 
 func main() {
-	fmt.Printf("Build version: %s\n", orNA(buildVersion))
-	fmt.Printf("Build date: %s\n", orNA(buildDate))
-	fmt.Printf("Build commit: %s\n", orNA(buildCommit))
+	fmt.Printf("Build version: %s\n", buildVersion)
+	fmt.Printf("Build date: %s\n", buildDate)
+	fmt.Printf("Build commit: %s\n", buildCommit)
 
 	if *memprofile != "" {
 		c := make(chan os.Signal, 1)

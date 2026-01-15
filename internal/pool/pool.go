@@ -14,44 +14,37 @@ type Poolable interface {
 }
 
 // Pool is a generic object pool for storing and reusing objects of type T.
+// It works similarly to sync.Pool but with automatic Reset() call on Put.
 // T must satisfy the Poolable constraint (have a Reset() method and be comparable).
 type Pool[T Poolable] struct {
-	mu    sync.Mutex
-	items chan T
+	pool sync.Pool
 }
 
 // New creates and returns a new Pool for objects of type T.
-// The capacity parameter specifies the maximum number of objects the pool can hold.
+// Unlike the previous implementation, this pool has no capacity limit and can grow dynamically,
+// similar to the standard library's sync.Pool.
 func New[T Poolable](capacity int) *Pool[T] {
-	return &Pool[T]{
-		items: make(chan T, capacity),
-	}
+	return &Pool[T]{}
 }
 
 // Get retrieves an object from the pool.
 // If the pool is empty, it returns the zero value of type T.
-// If an object is retrieved from the pool, it is returned as-is.
 func (p *Pool[T]) Get() T {
-	select {
-	case item := <-p.items:
-		return item
-	default:
+	val := p.pool.Get()
+	if val == nil {
 		var zero T
 		return zero
 	}
+	return val.(T)
 }
 
 // Put returns an object to the pool after calling its Reset() method.
-// If the pool is full, the object is discarded.
-// This ensures that objects are reset before being reused.
+// Objects in the pool may be automatically deleted during garbage collection,
+// similar to sync.Pool behavior.
 func (p *Pool[T]) Put(item T) {
 	var zero T
 	if item != zero {
 		item.Reset()
-	}
-
-	select {
-	case p.items <- item:
-	default:
+		p.pool.Put(item)
 	}
 }

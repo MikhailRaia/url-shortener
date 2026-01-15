@@ -71,19 +71,17 @@ func TestPoolMultipleItems(t *testing.T) {
 	retrieved1 := pool.Get()
 	retrieved2 := pool.Get()
 	retrieved3 := pool.Get()
-	empty := pool.Get()
 
 	assert.NotNil(t, retrieved1)
 	assert.NotNil(t, retrieved2)
 	assert.NotNil(t, retrieved3)
-	assert.Nil(t, empty)
 
 	assert.Equal(t, 1, retrieved1.ResetCalled)
 	assert.Equal(t, 1, retrieved2.ResetCalled)
 	assert.Equal(t, 1, retrieved3.ResetCalled)
 }
 
-func TestPoolCapacityOverflow(t *testing.T) {
+func TestPoolUnlimitedCapacity(t *testing.T) {
 	pool := New[*mockResettable](2)
 
 	obj1 := &mockResettable{Value: 1}
@@ -100,7 +98,7 @@ func TestPoolCapacityOverflow(t *testing.T) {
 
 	assert.NotNil(t, retrieved1)
 	assert.NotNil(t, retrieved2)
-	assert.Nil(t, retrieved3)
+	assert.NotNil(t, retrieved3)
 }
 
 func TestPoolNilHandling(t *testing.T) {
