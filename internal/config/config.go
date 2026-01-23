@@ -19,8 +19,10 @@ type Config struct {
 	FileStoragePath string
 	// DatabaseDSN is the PostgreSQL connection string (flag: -d, optional)
 	DatabaseDSN string
-	// JWTSecretKey is the secret key for signing JWT tokens (flag: -s)
+	// JWTSecretKey is the secret key for signing JWT tokens (flag: -jwt)
 	JWTSecretKey string
+	// EnableHTTPS indicates if the server should use HTTPS (flag: -s)
+	EnableHTTPS bool
 	// MaxProcs is the GOMAXPROCS value (flag: -p, 0=auto)
 	MaxProcs int
 }
@@ -33,6 +35,7 @@ func NewConfig() *Config {
 		FileStoragePath: getDefaultStoragePath(),
 		DatabaseDSN:     "",
 		JWTSecretKey:    "default-secret-key-change-in-production",
+		EnableHTTPS:     false,
 		MaxProcs:        0,
 	}
 
@@ -40,10 +43,17 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "Base URL for shortened URLs (e.g. http://localhost:8000)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "Path to file storage")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database connection string (e.g. postgres://username:password@localhost:5432/database_name)")
-	flag.StringVar(&cfg.JWTSecretKey, "s", cfg.JWTSecretKey, "JWT secret key for signing tokens")
+	flag.StringVar(&cfg.JWTSecretKey, "jwt", cfg.JWTSecretKey, "JWT secret key for signing tokens")
+	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "Enable HTTPS")
 	flag.IntVar(&cfg.MaxProcs, "p", cfg.MaxProcs, "GOMAXPROCS value (0=auto)")
 
 	flag.Parse()
+
+	if envEnableHTTPS := os.Getenv("ENABLE_HTTPS"); envEnableHTTPS != "" {
+		if b, err := strconv.ParseBool(envEnableHTTPS); err == nil {
+			cfg.EnableHTTPS = b
+		}
+	}
 
 	if envServerAddress := os.Getenv("SERVER_ADDRESS"); envServerAddress != "" {
 		cfg.ServerAddress = envServerAddress
