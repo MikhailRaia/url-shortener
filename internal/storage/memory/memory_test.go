@@ -68,3 +68,46 @@ func TestStorage_Get(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkStorage_Save(b *testing.B) {
+	storage := NewStorage()
+	url := "https://example.com/very/long/path/to/resource"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		storage.Save(url)
+	}
+}
+
+func BenchmarkStorage_Get(b *testing.B) {
+	storage := NewStorage()
+	id, _ := storage.Save("https://example.com")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		storage.Get(id)
+	}
+}
+
+func BenchmarkStorage_SaveAndGet(b *testing.B) {
+	storage := NewStorage()
+	url := "https://example.com/resource"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		id, _ := storage.Save(url)
+		storage.Get(id)
+	}
+}
+
+func BenchmarkStorage_SaveMultiple(b *testing.B) {
+	storage := NewStorage()
+	url := "https://example.com/resource"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 10; j++ {
+			storage.Save(url)
+		}
+	}
+}

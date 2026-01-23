@@ -19,13 +19,36 @@ import (
 
 // URLService defines operations for creating and resolving shortened URLs.
 type URLService interface {
+	// ShortenURL shortens a URL without user association.
+	// Returns the shortened URL or an error if the operation fails.
 	ShortenURL(ctx context.Context, originalURL string) (string, error)
+
+	// ShortenURLWithUser shortens a URL and associates it with a user.
+	// Returns the shortened URL or an error if the operation fails.
 	ShortenURLWithUser(ctx context.Context, originalURL, userID string) (string, error)
+
+	// GetOriginalURL retrieves the original URL for a given shortened URL ID.
+	// Returns the original URL and a boolean indicating if it was found.
 	GetOriginalURL(ctx context.Context, id string) (string, bool)
+
+	// GetOriginalURLWithDeletedStatus retrieves the original URL and checks if it's deleted.
+	// Returns the original URL or an error if not found or if the URL is deleted.
 	GetOriginalURLWithDeletedStatus(ctx context.Context, id string) (string, error)
+
+	// ShortenBatch shortens multiple URLs in a single operation.
+	// Returns a slice of batch response items or an error.
 	ShortenBatch(ctx context.Context, items []model.BatchRequestItem) ([]model.BatchResponseItem, error)
+
+	// ShortenBatchWithUser shortens multiple URLs and associates them with a user.
+	// Returns a slice of batch response items or an error.
 	ShortenBatchWithUser(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
+
+	// GetUserURLs retrieves all shortened URLs associated with a user.
+	// Returns a slice of user URL records or an error.
 	GetUserURLs(ctx context.Context, userID string) ([]model.UserURL, error)
+
+	// DeleteUserURLs marks user URLs as deleted.
+	// Returns an error if the operation fails.
 	DeleteUserURLs(userID string, urlIDs []string) error
 }
 
@@ -40,6 +63,8 @@ type DeleteWorker interface {
 }
 
 // Handler exposes HTTP endpoints for the URL shortener service.
+// It provides endpoints for shortening URLs, retrieving original URLs,
+// managing user URLs, and checking database health.
 type Handler struct {
 	urlService   URLService
 	dbPinger     DBPinger
@@ -47,6 +72,7 @@ type Handler struct {
 }
 
 // NewHandler constructs a Handler without auth-specific routes.
+// It requires a URLService and an optional DBPinger for health checks.
 func NewHandler(urlService URLService, dbPinger DBPinger) *Handler {
 	return &Handler{
 		urlService: urlService,
@@ -55,6 +81,7 @@ func NewHandler(urlService URLService, dbPinger DBPinger) *Handler {
 }
 
 // NewHandlerWithDeleteWorker constructs a Handler and configures an async delete worker.
+// The delete worker enables asynchronous processing of user URL deletion requests.
 func NewHandlerWithDeleteWorker(urlService URLService, dbPinger DBPinger, deleteWorker DeleteWorker) *Handler {
 	return &Handler{
 		urlService:   urlService,
@@ -64,6 +91,7 @@ func NewHandlerWithDeleteWorker(urlService URLService, dbPinger DBPinger, delete
 }
 
 // RegisterRoutes registers public endpoints that don't require authentication.
+// Endpoints: POST /, POST /api/shorten, POST /api/shorten/batch, GET /{id}, GET /ping
 func (h *Handler) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
 
@@ -85,7 +113,8 @@ func (h *Handler) RegisterRoutes() http.Handler {
 	return r
 }
 
-// RegisterRoutesWithAuth registers endpoints with auth and user-specific features.
+// RegisterRoutesWithAuth registers endpoints with authentication and user-specific features.
+// Endpoints include all public routes plus: GET /api/user/urls, DELETE /api/user/urls
 func (h *Handler) RegisterRoutesWithAuth(authMiddleware *middleware.AuthMiddleware) http.Handler {
 	r := chi.NewRouter()
 

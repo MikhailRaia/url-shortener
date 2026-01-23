@@ -31,6 +31,26 @@ git fetch template && git checkout template/main .github
 
 Подробнее про локальный и автоматический запуск читайте в [README автотестов](https://github.com/Yandex-Practicum/go-autotests).
 
+## Компиляция с информацией о сборке
+
+При компиляции сервиса можно передать информацию о версии, дате и коммите сборки с помощью флага `-ldflags`:
+
+```bash
+go build -ldflags="-X main.buildVersion=1.0.0 -X main.buildDate=2025-01-15 -X main.buildCommit=abc123" ./cmd/shortener
+```
+
+Или используя переменные окружения:
+
+```bash
+VERSION=$(git describe --tags --always)
+DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+COMMIT=$(git rev-parse --short HEAD)
+
+go build -ldflags="-X main.buildVersion=$VERSION -X main.buildDate=$DATE -X main.buildCommit=$COMMIT" ./cmd/shortener
+```
+
+Если флаги не переданы, переменные содержат значение "N/A" по умолчанию.
+
 ## Профилирование памяти (pprof)
 
 - **Команда сравнения**:

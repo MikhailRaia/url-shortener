@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -107,7 +108,7 @@ func TestURLService_ShortenURL(t *testing.T) {
 			}
 
 			service := NewURLService(mockStorage, baseURL)
-			got, err := service.ShortenURL(tt.originalURL)
+			got, err := service.ShortenURL(context.Background(), tt.originalURL)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("URLService.ShortenURL() error = %v, wantErr %v", err, tt.wantErr)
@@ -162,7 +163,7 @@ func TestURLService_GetOriginalURL(t *testing.T) {
 			}
 
 			service := NewURLService(mockStorage, baseURL)
-			gotURL, gotFound := service.GetOriginalURL(tt.id)
+			gotURL, gotFound := service.GetOriginalURL(context.Background(), tt.id)
 
 			if gotFound != tt.wantFound {
 				t.Errorf("URLService.GetOriginalURL() found = %v, want %v", gotFound, tt.wantFound)
@@ -172,5 +173,60 @@ func TestURLService_GetOriginalURL(t *testing.T) {
 				t.Errorf("URLService.GetOriginalURL() = %v, want %v", gotURL, tt.wantURL)
 			}
 		})
+	}
+}
+
+func BenchmarkURLService_ShortenURL(b *testing.B) {
+	baseURL := "http://localhost:8080"
+	mockStorage := &mockStorage{
+		saveFunc: func(originalURL string) (string, error) {
+			return "abc123", nil
+		},
+	}
+	service := NewURLService(mockStorage, baseURL)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		service.ShortenURL(context.Background(), "https://example.com/very/long/url/path")
+	}
+}
+
+func BenchmarkURLService_GetOriginalURL(b *testing.B) {
+	baseURL := "http://localhost:8080"
+	mockStorage := &mockStorage{
+		getFunc: func(id string) (string, bool) {
+			return "https://example.com", true
+		},
+	}
+	service := NewURLService(mockStorage, baseURL)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		service.GetOriginalURL(context.Background(), "abc123")
+	}
+}
+
+func BenchmarkURLService_ShortenBatch(b *testing.B) {
+	baseURL := "http://localhost:8080"
+	mockStorage := &mockStorage{
+		saveBatchFunc: func(items []model.BatchRequestItem) (map[string]string, error) {
+			result := make(map[string]string)
+			for i := range items {
+				result[items[i].CorrelationID] = "abc" + string(rune(i))
+			}
+			return result, nil
+		},
+	}
+	service := NewURLService(mockStorage, baseURL)
+
+	items := []model.BatchRequestItem{
+		{CorrelationID: "1", OriginalURL: "https://example.com/1"},
+		{CorrelationID: "2", OriginalURL: "https://example.com/2"},
+		{CorrelationID: "3", OriginalURL: "https://example.com/3"},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		service.ShortenBatch(context.Background(), items)
 	}
 }

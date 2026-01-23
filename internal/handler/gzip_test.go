@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -17,22 +18,22 @@ import (
 
 type MockGzipURLService struct{}
 
-func (m *MockGzipURLService) ShortenURL(originalURL string) (string, error) {
+func (m *MockGzipURLService) ShortenURL(ctx context.Context, originalURL string) (string, error) {
 	return "http://localhost:8080/abc123", nil
 }
 
-func (m *MockGzipURLService) ShortenURLWithUser(originalURL, userID string) (string, error) {
+func (m *MockGzipURLService) ShortenURLWithUser(ctx context.Context, originalURL, userID string) (string, error) {
 	return "http://localhost:8080/abc123", nil
 }
 
-func (m *MockGzipURLService) GetOriginalURL(id string) (string, bool) {
+func (m *MockGzipURLService) GetOriginalURL(ctx context.Context, id string) (string, bool) {
 	if id == "abc123" {
 		return "https://example.com", true
 	}
 	return "", false
 }
 
-func (m *MockGzipURLService) ShortenBatch(items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
+func (m *MockGzipURLService) ShortenBatch(ctx context.Context, items []model.BatchRequestItem) ([]model.BatchResponseItem, error) {
 	result := make([]model.BatchResponseItem, 0, len(items))
 	for _, item := range items {
 		result = append(result, model.BatchResponseItem{
@@ -43,7 +44,7 @@ func (m *MockGzipURLService) ShortenBatch(items []model.BatchRequestItem) ([]mod
 	return result, nil
 }
 
-func (m *MockGzipURLService) ShortenBatchWithUser(items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
+func (m *MockGzipURLService) ShortenBatchWithUser(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error) {
 	result := make([]model.BatchResponseItem, 0, len(items))
 	for _, item := range items {
 		result = append(result, model.BatchResponseItem{
@@ -54,11 +55,11 @@ func (m *MockGzipURLService) ShortenBatchWithUser(items []model.BatchRequestItem
 	return result, nil
 }
 
-func (m *MockGzipURLService) GetUserURLs(userID string) ([]model.UserURL, error) {
+func (m *MockGzipURLService) GetUserURLs(ctx context.Context, userID string) ([]model.UserURL, error) {
 	return []model.UserURL{}, nil
 }
 
-func (m *MockGzipURLService) GetOriginalURLWithDeletedStatus(id string) (string, error) {
+func (m *MockGzipURLService) GetOriginalURLWithDeletedStatus(ctx context.Context, id string) (string, error) {
 	if id == "abc123" {
 		return "https://example.com", nil
 	}

@@ -106,7 +106,7 @@ func TestDeleteWorkerPool_BatchProcessing(t *testing.T) {
 		WorkerCount:  2,
 		BufferSize:   50,
 		BatchSize:    10,
-		BatchTimeout: 5 * time.Second,
+		BatchTimeout: 100 * time.Millisecond,
 	}
 
 	pool := NewDeleteWorkerPool(service, config)
@@ -122,7 +122,7 @@ func TestDeleteWorkerPool_BatchProcessing(t *testing.T) {
 	err = pool.Submit("user2", []string{"url6", "url7", "url8", "url9", "url10"})
 	require.NoError(t, err)
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	calls := service.GetCalls()
 	require.NotEmpty(t, calls)

@@ -88,6 +88,7 @@ func (s *Storage) createTable(ctx context.Context) error {
 	return nil
 }
 
+// Save stores a new URL and returns its generated short ID.
 func (s *Storage) Save(originalURL string) (string, error) {
 	ctx := context.Background()
 
@@ -135,6 +136,7 @@ func (s *Storage) Save(originalURL string) (string, error) {
 	return id, nil
 }
 
+// Get retrieves the original URL for a given short ID.
 func (s *Storage) Get(id string) (string, bool) {
 	ctx := context.Background()
 
@@ -156,6 +158,7 @@ func (s *Storage) Get(id string) (string, bool) {
 	return originalURL, true
 }
 
+// GetWithDeletedStatus retrieves the original URL and checks if it has been deleted.
 func (s *Storage) GetWithDeletedStatus(id string) (string, error) {
 	ctx := context.Background()
 
@@ -181,6 +184,7 @@ func (s *Storage) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
 }
 
+// SaveBatch stores multiple URLs and returns a map of correlation IDs to short IDs.
 func (s *Storage) SaveBatch(items []model.BatchRequestItem) (map[string]string, error) {
 	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
@@ -253,6 +257,7 @@ func (s *Storage) Close() {
 	}
 }
 
+// SaveWithUser stores a new URL associated with a user and returns its generated short ID.
 func (s *Storage) SaveWithUser(originalURL, userID string) (string, error) {
 	ctx := context.Background()
 
@@ -300,6 +305,7 @@ func (s *Storage) SaveWithUser(originalURL, userID string) (string, error) {
 	return id, nil
 }
 
+// SaveBatchWithUser stores multiple URLs associated with a user and returns a map of correlation IDs to short IDs.
 func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID string) (map[string]string, error) {
 	ctx := context.Background()
 	tx, err := s.pool.Begin(ctx)
@@ -365,6 +371,7 @@ func (s *Storage) SaveBatchWithUser(items []model.BatchRequestItem, userID strin
 	return result, nil
 }
 
+// GetUserURLs retrieves all non-deleted URLs associated with a user.
 func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 	ctx := context.Background()
 
@@ -394,6 +401,7 @@ func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 	return result, nil
 }
 
+// DeleteUserURLs marks specified URLs as deleted for a user.
 func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
 	if len(urlIDs) == 0 {
 		return nil

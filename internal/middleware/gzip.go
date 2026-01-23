@@ -13,14 +13,17 @@ type GzipWriter struct {
 	Writer io.Writer
 }
 
+// Write writes the byte slice to the underlying gzip Writer.
 func (w GzipWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
 }
 
+// Header returns the HTTP header map.
 func (w GzipWriter) Header() http.Header {
 	return w.ResponseWriter.Header()
 }
 
+// WriteHeader writes the status code to the underlying ResponseWriter.
 func (w GzipWriter) WriteHeader(statusCode int) {
 	w.ResponseWriter.WriteHeader(statusCode)
 }
@@ -86,10 +89,12 @@ type responseWriterWrapper struct {
 	headersSent bool
 }
 
+// WriteHeader captures the status code without immediately writing it.
 func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
 }
 
+// Write appends the byte slice to the body buffer.
 func (w *responseWriterWrapper) Write(b []byte) (int, error) {
 	w.body = append(w.body, b...)
 	return len(b), nil

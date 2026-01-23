@@ -8,6 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// JWT token validation errors.
 var (
 	// ErrInvalidToken indicates the token is malformed or could not be verified.
 	ErrInvalidToken = errors.New("invalid token")
