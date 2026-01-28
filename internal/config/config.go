@@ -27,8 +27,12 @@ type Config struct {
 	EnableHTTPS bool `json:"enable_https"`
 	// MaxProcs is the GOMAXPROCS value (flag: -p, 0=auto)
 	MaxProcs int `json:"max_procs"`
+	// TrustedSubnet is the CIDR allowed to access internal stats (flag: -t)
+	TrustedSubnet string `json:"trusted_subnet"`
 	// ConfigPath is the path to the JSON configuration file (flag: -c, -config)
 	ConfigPath string
+	// GRPCAddress is the TCP address the gRPC server listens on (flag: -g, default: :8081)
+	GRPCAddress string `json:"grpc_address"`
 }
 
 // NewConfig returns a Config initialized from command-line flags and environment variables.
@@ -41,6 +45,7 @@ func NewConfig() *Config {
 		JWTSecretKey:    "default-secret-key-change-in-production",
 		EnableHTTPS:     false,
 		MaxProcs:        0,
+		GRPCAddress:     ":8081",
 	}
 
 	// 1. Define all flags
@@ -51,6 +56,8 @@ func NewConfig() *Config {
 	flag.StringVar(&cfg.JWTSecretKey, "jwt", cfg.JWTSecretKey, "JWT secret key for signing tokens")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "Enable HTTPS")
 	flag.IntVar(&cfg.MaxProcs, "p", cfg.MaxProcs, "GOMAXPROCS value (0=auto)")
+	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "Trusted subnet CIDR for internal stats")
+	flag.StringVar(&cfg.GRPCAddress, "g", cfg.GRPCAddress, "gRPC server address (e.g. localhost:8081)")
 	flag.StringVar(&cfg.ConfigPath, "c", "", "Path to JSON configuration file")
 	flag.StringVar(&cfg.ConfigPath, "config", "", "Path to JSON configuration file (long form)")
 
@@ -102,6 +109,12 @@ func NewConfig() *Config {
 				if jsonCfg.MaxProcs != 0 {
 					cfg.MaxProcs = jsonCfg.MaxProcs
 				}
+				if jsonCfg.TrustedSubnet != "" {
+					cfg.TrustedSubnet = jsonCfg.TrustedSubnet
+				}
+				if jsonCfg.GRPCAddress != "" {
+					cfg.GRPCAddress = jsonCfg.GRPCAddress
+				}
 			}
 		}
 	}
@@ -140,6 +153,14 @@ func NewConfig() *Config {
 		if n, err := strconv.Atoi(envMaxProcs); err == nil {
 			cfg.MaxProcs = n
 		}
+	}
+
+	if envTrustedSubnet := os.Getenv("TRUSTED_SUBNET"); envTrustedSubnet != "" {
+		cfg.TrustedSubnet = envTrustedSubnet
+	}
+
+	if envGRPCAddress := os.Getenv("GRPC_SERVER_ADDRESS"); envGRPCAddress != "" {
+		cfg.GRPCAddress = envGRPCAddress
 	}
 
 	return cfg

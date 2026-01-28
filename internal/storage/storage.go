@@ -31,4 +31,6 @@ type URLStorage interface {
 	GetUserURLs(userID string) ([]model.UserURL, error)
 
 	DeleteUserURLs(userID string, urlIDs []string) error
+
+	GetStats() (int, int, error)
 }

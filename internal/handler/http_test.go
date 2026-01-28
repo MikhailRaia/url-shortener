@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MikhailRaia/url-shortener/internal/config"
 	"github.com/MikhailRaia/url-shortener/internal/model"
 	"github.com/MikhailRaia/url-shortener/internal/storage"
 	"github.com/go-chi/chi/v5"
@@ -22,6 +23,7 @@ type mockURLService struct {
 	shortenBatchWithUserFunc            func(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
 	getUserURLsFunc                     func(ctx context.Context, userID string) ([]model.UserURL, error)
 	deleteUserURLsFunc                  func(userID string, urlIDs []string) error
+	getStatsFunc                        func(ctx context.Context) (int, int, error)
 }
 
 func (m *mockURLService) ShortenURL(ctx context.Context, originalURL string) (string, error) {
@@ -72,6 +74,13 @@ func (m *mockURLService) DeleteUserURLs(userID string, urlIDs []string) error {
 		return m.deleteUserURLsFunc(userID, urlIDs)
 	}
 	return nil
+}
+
+func (m *mockURLService) GetStats(ctx context.Context) (int, int, error) {
+	if m.getStatsFunc != nil {
+		return m.getStatsFunc(ctx)
+	}
+	return 0, 0, nil
 }
 
 func TestHandler_handleShorten(t *testing.T) {
@@ -136,7 +145,7 @@ func TestHandler_handleShorten(t *testing.T) {
 				},
 			}
 
-			handler := NewHandler(mockService, nil)
+			handler := NewHandler(mockService, nil, &config.Config{})
 
 			req := httptest.NewRequest(tt.requestMethod, tt.requestURL, bytes.NewBufferString(tt.requestBody))
 			if tt.contentType != "" {
@@ -205,7 +214,7 @@ func TestHandler_handleRedirect(t *testing.T) {
 				},
 			}
 
-			handler := NewHandler(mockService, nil)
+			handler := NewHandler(mockService, nil, &config.Config{})
 
 			req := httptest.NewRequest(http.MethodGet, "/"+tt.urlID, nil)
 
@@ -233,7 +242,7 @@ func TestHandler_handleRedirect(t *testing.T) {
 
 func TestHandler_RegisterRoutes(t *testing.T) {
 	mockService := &mockURLService{}
-	handler := NewHandler(mockService, nil)
+	handler := NewHandler(mockService, nil, &config.Config{})
 
 	router := handler.RegisterRoutes()
 	if router == nil {

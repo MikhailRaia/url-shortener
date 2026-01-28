@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/handler"
 	"github.com/MikhailRaia/url-shortener/internal/logger"
 	"github.com/MikhailRaia/url-shortener/internal/middleware"
+	"github.com/MikhailRaia/url-shortener/internal/proto"
 	"github.com/MikhailRaia/url-shortener/internal/service"
 	"github.com/MikhailRaia/url-shortener/internal/storage"
 	"github.com/MikhailRaia/url-shortener/internal/storage/file"
@@ -27,6 +29,7 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/storage/postgres"
 	"github.com/MikhailRaia/url-shortener/internal/worker"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc"
 )
 
 // App wires storage, services, middleware, and HTTP handlers and controls the server lifecycle.
@@ -37,6 +40,7 @@ type App struct {
 	jwtService     *auth.JWTService
 	authMiddleware *middleware.AuthMiddleware
 	deleteWorker   *worker.DeleteWorkerPool
+	grpcServer     *grpc.Server
 }
 
 // NewApp creates and initializes application dependencies and HTTP routes.
@@ -85,7 +89,15 @@ func NewApp(cfg *config.Config) *App {
 	deleteWorker.Start()
 	log.Info().Msg("Delete worker pool started")
 
-	httpHandler := handler.NewHandlerWithDeleteWorker(urlService, dbStorage, deleteWorker)
+	httpHandler := handler.NewHandlerWithDeleteWorker(urlService, dbStorage, deleteWorker, cfg)
+
+	// Настройка gRPC сервера
+	grpcAuthMiddleware := middleware.NewGRPCAuthMiddleware(jwtService)
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(grpcAuthMiddleware.UnaryInterceptor),
+	)
+	grpcShortenerServer := handler.NewShortenerGRPCServer(urlService)
+	proto.RegisterShortenerServiceServer(grpcServer, grpcShortenerServer)
 
 	return &App{
 		config:       cfg,
@@ -93,12 +105,18 @@ func NewApp(cfg *config.Config) *App {
 		dbStorage:    dbStorage,
 		jwtService:   jwtService,
 		deleteWorker: deleteWorker,
+		grpcServer:   grpcServer,
 	}
 }
 
 // Run starts the HTTP server and performs graceful shutdown of resources on exit.
 func (a *App) Run() error {
-	log.Info().Str("url", a.config.BaseURL).Str("address", a.config.ServerAddress).Bool("https", a.config.EnableHTTPS).Msg("Starting server")
+	log.Info().
+		Str("url", a.config.BaseURL).
+		Str("http_address", a.config.ServerAddress).
+		Str("grpc_address", a.config.GRPCAddress).
+		Bool("https", a.config.EnableHTTPS).
+		Msg("Starting server")
 
 	defer func() {
 		if a.dbStorage != nil {
@@ -121,6 +139,7 @@ func (a *App) Run() error {
 
 	serverError := make(chan error, 1)
 
+	// Запуск HTTP сервера
 	go func() {
 		if a.config.EnableHTTPS {
 			certFile := "cert.pem"
@@ -144,6 +163,20 @@ func (a *App) Run() error {
 		}
 	}()
 
+	// Запуск gRPC сервера
+	go func() {
+		listen, err := net.Listen("tcp", a.config.GRPCAddress)
+		if err != nil {
+			serverError <- fmt.Errorf("failed to listen for gRPC: %w", err)
+			return
+		}
+
+		log.Info().Str("address", a.config.GRPCAddress).Msg("Starting gRPC server")
+		if err := a.grpcServer.Serve(listen); err != nil {
+			serverError <- fmt.Errorf("failed to start gRPC server: %w", err)
+		}
+	}()
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 
@@ -153,6 +186,12 @@ func (a *App) Run() error {
 	case sig := <-stop:
 		log.Info().Str("signal", sig.String()).Msg("Shutting down gracefully...")
 
+		// Грациозная остановка gRPC сервера
+		log.Info().Msg("Shutting down gRPC server")
+		a.grpcServer.GracefulStop()
+
+		// Грациозная остановка HTTP сервера
+		log.Info().Msg("Shutting down HTTP server")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 

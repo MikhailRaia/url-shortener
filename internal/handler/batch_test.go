@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/MikhailRaia/url-shortener/internal/config"
 	"github.com/MikhailRaia/url-shortener/internal/model"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -68,8 +69,12 @@ func (m *MockBatchURLService) DeleteUserURLs(userID string, urlIDs []string) err
 	return nil
 }
 
+func (m *MockBatchURLService) GetStats(ctx context.Context) (int, int, error) {
+	return 0, 0, nil
+}
+
 func TestHandleShortenBatch(t *testing.T) {
-	h := NewHandler(&MockBatchURLService{}, nil)
+	h := NewHandler(&MockBatchURLService{}, nil, &config.Config{})
 
 	r := chi.NewRouter()
 	r.Post("/api/shorten/batch", h.handleShortenBatch)
@@ -108,7 +113,7 @@ func TestHandleShortenBatch(t *testing.T) {
 }
 
 func TestHandleShortenBatchInvalidJSON(t *testing.T) {
-	h := NewHandler(&MockBatchURLService{}, nil)
+	h := NewHandler(&MockBatchURLService{}, nil, &config.Config{})
 
 	r := chi.NewRouter()
 	r.Post("/api/shorten/batch", h.handleShortenBatch)
@@ -125,7 +130,7 @@ func TestHandleShortenBatchInvalidJSON(t *testing.T) {
 }
 
 func TestHandleShortenBatchEmptyRequest(t *testing.T) {
-	h := NewHandler(&MockBatchURLService{}, nil)
+	h := NewHandler(&MockBatchURLService{}, nil, &config.Config{})
 
 	r := chi.NewRouter()
 	r.Post("/api/shorten/batch", h.handleShortenBatch)

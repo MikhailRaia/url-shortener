@@ -132,3 +132,8 @@ func (s *URLService) GetUserURLs(ctx context.Context, userID string) ([]model.Us
 func (s *URLService) DeleteUserURLs(userID string, urlIDs []string) error {
 	return s.storage.DeleteUserURLs(userID, urlIDs)
 }
+
+// GetStats returns total number of URLs and users.
+func (s *URLService) GetStats(ctx context.Context) (int, int, error) {
+	return s.storage.GetStats()
+}

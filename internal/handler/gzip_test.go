@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MikhailRaia/url-shortener/internal/config"
 	"github.com/MikhailRaia/url-shortener/internal/middleware"
 	"github.com/MikhailRaia/url-shortener/internal/model"
 	"github.com/go-chi/chi/v5"
@@ -70,8 +71,12 @@ func (m *MockGzipURLService) DeleteUserURLs(userID string, urlIDs []string) erro
 	return nil
 }
 
+func (m *MockGzipURLService) GetStats(ctx context.Context) (int, int, error) {
+	return 0, 0, nil
+}
+
 func TestGzipCompression(t *testing.T) {
-	h := NewHandler(&MockGzipURLService{}, nil)
+	h := NewHandler(&MockGzipURLService{}, nil, &config.Config{})
 
 	r := chi.NewRouter()
 	r.Use(middleware.GzipReader)
@@ -119,7 +124,7 @@ func TestGzipCompression(t *testing.T) {
 }
 
 func TestGzipDecompression(t *testing.T) {
-	h := NewHandler(&MockGzipURLService{}, nil)
+	h := NewHandler(&MockGzipURLService{}, nil, &config.Config{})
 
 	r := chi.NewRouter()
 	r.Use(middleware.GzipReader)
@@ -160,7 +165,7 @@ func TestGzipDecompression(t *testing.T) {
 }
 
 func TestTextPlainGzipCompression(t *testing.T) {
-	h := NewHandler(&MockGzipURLService{}, nil)
+	h := NewHandler(&MockGzipURLService{}, nil, &config.Config{})
 
 	r := chi.NewRouter()
 	r.Use(middleware.GzipReader)

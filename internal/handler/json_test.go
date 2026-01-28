@@ -22,6 +22,7 @@ type MockURLService struct {
 	ShortenBatchWithUserFunc            func(ctx context.Context, items []model.BatchRequestItem, userID string) ([]model.BatchResponseItem, error)
 	GetUserURLsFunc                     func(ctx context.Context, userID string) ([]model.UserURL, error)
 	DeleteUserURLsFunc                  func(userID string, urlIDs []string) error
+	GetStatsFunc                        func(ctx context.Context) (int, int, error)
 }
 
 func (m *MockURLService) ShortenURL(ctx context.Context, originalURL string) (string, error) {
@@ -72,6 +73,13 @@ func (m *MockURLService) DeleteUserURLs(userID string, urlIDs []string) error {
 		return m.DeleteUserURLsFunc(userID, urlIDs)
 	}
 	return nil
+}
+
+func (m *MockURLService) GetStats(ctx context.Context) (int, int, error) {
+	if m.GetStatsFunc != nil {
+		return m.GetStatsFunc(ctx)
+	}
+	return 0, 0, nil
 }
 
 func TestHandleShortenJSON(t *testing.T) {
