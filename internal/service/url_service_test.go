@@ -17,6 +17,7 @@ type mockStorage struct {
 	saveBatchWithUserFunc    func(items []model.BatchRequestItem, userID string) (map[string]string, error)
 	getUserURLsFunc          func(userID string) ([]model.UserURL, error)
 	deleteUserURLsFunc       func(userID string, urlIDs []string) error
+	getStatsFunc             func() (int, int, error)
 }
 
 func (m *mockStorage) Save(originalURL string) (string, error) {
@@ -68,6 +69,13 @@ func (m *mockStorage) DeleteUserURLs(userID string, urlIDs []string) error {
 		return m.deleteUserURLsFunc(userID, urlIDs)
 	}
 	return nil
+}
+
+func (m *mockStorage) GetStats() (int, int, error) {
+	if m.getStatsFunc != nil {
+		return m.getStatsFunc()
+	}
+	return 0, 0, nil
 }
 
 func TestURLService_ShortenURL(t *testing.T) {

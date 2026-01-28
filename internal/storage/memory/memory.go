@@ -190,3 +190,11 @@ func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
 
 	return nil
 }
+
+// GetStats returns total number of URLs and users.
+func (s *Storage) GetStats() (int, int, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	return len(s.urlMap), len(s.userURLs), nil
+}

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 
+	"github.com/MikhailRaia/url-shortener/internal/config"
 	"github.com/MikhailRaia/url-shortener/internal/model"
 	"github.com/MikhailRaia/url-shortener/internal/storage/memory"
 )
@@ -102,13 +103,17 @@ func (s *exampleURLService) DeleteUserURLs(userID string, urlIDs []string) error
 	return s.Storage.DeleteUserURLs(userID, urlIDs)
 }
 
+func (s *exampleURLService) GetStats(ctx context.Context) (int, int, error) {
+	return s.Storage.GetStats()
+}
+
 // Example demonstrates how to use the Handler to shorten a URL via plain text endpoint.
 func ExampleHandler_handleShorten() {
 	service := &exampleURLService{
 		Storage: memory.NewStorage(),
 		baseURL: "http://localhost:8080",
 	}
-	handler := NewHandler(service, nil)
+	handler := NewHandler(service, nil, &config.Config{})
 
 	req := httptest.NewRequest("POST", "/", strings.NewReader("https://example.com"))
 	req.Header.Set("Content-Type", "text/plain")
@@ -135,7 +140,7 @@ func ExampleHandler_HandleShortenJSON() {
 		Storage: memory.NewStorage(),
 		baseURL: "http://localhost:8080",
 	}
-	handler := NewHandler(service, nil)
+	handler := NewHandler(service, nil, &config.Config{})
 
 	reqBody := ShortenRequest{URL: "https://example.com/very/long/path"}
 	jsonBody, _ := json.Marshal(reqBody)
@@ -163,7 +168,7 @@ func ExampleHandler_handleRedirect() {
 	service.Save("https://example.com")
 	id, _ := service.Save("https://golang.org")
 
-	handler := NewHandler(service, nil)
+	handler := NewHandler(service, nil, &config.Config{})
 
 	req := httptest.NewRequest("GET", fmt.Sprintf("/%s", id), nil)
 	w := httptest.NewRecorder()
@@ -181,7 +186,7 @@ func ExampleHandler_handleShortenBatch() {
 		Storage: memory.NewStorage(),
 		baseURL: "http://localhost:8080",
 	}
-	handler := NewHandler(service, nil)
+	handler := NewHandler(service, nil, &config.Config{})
 
 	items := []model.BatchRequestItem{
 		{CorrelationID: "id1", OriginalURL: "https://golang.org"},
@@ -209,7 +214,7 @@ func ExampleHandler_RegisterRoutes() {
 		Storage: memory.NewStorage(),
 		baseURL: "http://localhost:8080",
 	}
-	handler := NewHandler(service, nil)
+	handler := NewHandler(service, nil, &config.Config{})
 
 	router := handler.RegisterRoutes()
 

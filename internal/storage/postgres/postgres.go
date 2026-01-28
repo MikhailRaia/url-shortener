@@ -401,6 +401,25 @@ func (s *Storage) GetUserURLs(userID string) ([]model.UserURL, error) {
 	return result, nil
 }
 
+// GetStats returns total number of URLs and users.
+func (s *Storage) GetStats() (int, int, error) {
+	ctx := context.Background()
+
+	var urlsCount int
+	err := s.pool.QueryRow(ctx, "SELECT COUNT(*) FROM urls").Scan(&urlsCount)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get urls count: %w", err)
+	}
+
+	var usersCount int
+	err = s.pool.QueryRow(ctx, "SELECT COUNT(DISTINCT user_id) FROM urls WHERE user_id IS NOT NULL AND user_id != ''").Scan(&usersCount)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get users count: %w", err)
+	}
+
+	return urlsCount, usersCount, nil
+}
+
 // DeleteUserURLs marks specified URLs as deleted for a user.
 func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
 	if len(urlIDs) == 0 {
