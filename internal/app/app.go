@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -10,6 +11,8 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/MikhailRaia/url-shortener/internal/auth"
@@ -111,23 +114,50 @@ func (a *App) Run() error {
 		}
 	}()
 
-	if a.config.EnableHTTPS {
-		certFile := "cert.pem"
-		keyFile := "key.pem"
+	server := &http.Server{
+		Addr:    a.config.ServerAddress,
+		Handler: a.handler,
+	}
 
-		if _, err := os.Stat(certFile); os.IsNotExist(err) {
-			if err := createSelfSignedCert(certFile, keyFile); err != nil {
-				return fmt.Errorf("failed to create self-signed certificate: %w", err)
+	serverError := make(chan error, 1)
+
+	go func() {
+		if a.config.EnableHTTPS {
+			certFile := "cert.pem"
+			keyFile := "key.pem"
+
+			if _, err := os.Stat(certFile); os.IsNotExist(err) {
+				if err := createSelfSignedCert(certFile, keyFile); err != nil {
+					serverError <- fmt.Errorf("failed to create self-signed certificate: %w", err)
+					return
+				}
+				log.Info().Msg("Self-signed certificate created")
 			}
-			log.Info().Msg("Self-signed certificate created")
-		}
 
-		if err := http.ListenAndServeTLS(a.config.ServerAddress, certFile, keyFile, a.handler); err != nil {
-			return fmt.Errorf("failed to start HTTPS server: %w", err)
+			if err := server.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+				serverError <- fmt.Errorf("failed to start HTTPS server: %w", err)
+			}
+		} else {
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				serverError <- fmt.Errorf("failed to start HTTP server: %w", err)
+			}
 		}
-	} else {
-		if err := http.ListenAndServe(a.config.ServerAddress, a.handler); err != nil {
-			return fmt.Errorf("failed to start HTTP server: %w", err)
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
+	select {
+	case err := <-serverError:
+		return err
+	case sig := <-stop:
+		log.Info().Str("signal", sig.String()).Msg("Shutting down gracefully...")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown failed: %w", err)
 		}
 	}
 
