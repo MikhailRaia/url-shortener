@@ -39,7 +39,10 @@ func TestNewConfigWithJSON(t *testing.T) {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"cmd", "-c", configPath}
 
-	cfg := NewConfig()
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
 
 	if cfg.ServerAddress != "json:8080" {
 		t.Errorf("NewConfig() ServerAddress = %v, want %v", cfg.ServerAddress, "json:8080")
@@ -83,7 +86,10 @@ func TestNewConfigJSONPriority(t *testing.T) {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"cmd", "-c", configPath, "-a", "flag:8080"}
 
-	cfg := NewConfig()
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
 
 	if cfg.ServerAddress != "env:8080" {
 		t.Errorf("NewConfig() ServerAddress = %v, want %v", cfg.ServerAddress, "env:8080")

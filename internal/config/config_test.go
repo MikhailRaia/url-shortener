@@ -23,7 +23,10 @@ func TestNewConfigDefault(t *testing.T) {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"cmd"}
 
-	cfg := NewConfig()
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
 
 	if cfg.ServerAddress != ":8080" {
 		t.Errorf("NewConfig() ServerAddress = %v, want %v", cfg.ServerAddress, ":8080")
@@ -51,7 +54,10 @@ func TestNewConfigWithArgs(t *testing.T) {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"cmd", "-a", "localhost:8888", "-b", "http://localhost:8000"}
 
-	cfg := NewConfig()
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
 
 	if cfg.ServerAddress != "localhost:8888" {
 		t.Errorf("NewConfig() ServerAddress = %v, want %v", cfg.ServerAddress, "localhost:8888")
@@ -79,7 +85,10 @@ func TestNewConfigWithEnv(t *testing.T) {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"cmd"}
 
-	cfg := NewConfig()
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
 
 	if cfg.ServerAddress != "localhost:9999" {
 		t.Errorf("NewConfig() ServerAddress = %v, want %v", cfg.ServerAddress, "localhost:9999")
@@ -107,7 +116,10 @@ func TestNewConfigEnvOverridesArgs(t *testing.T) {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"cmd", "-a", "localhost:8888", "-b", "http://localhost:8000"}
 
-	cfg := NewConfig()
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
 
 	if cfg.ServerAddress != "localhost:9999" {
 		t.Errorf("NewConfig() ServerAddress = %v, want %v", cfg.ServerAddress, "localhost:9999")

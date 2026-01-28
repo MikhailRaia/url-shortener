@@ -46,7 +46,10 @@ func main() {
 		}()
 	}
 
-	cfg := config.NewConfig()
+	cfg, err := config.NewConfig()
+	if err != nil {
+		log.Fatalf("Error loading configuration: %v", err)
+	}
 
 	if cfg.MaxProcs > 0 {
 		runtime.GOMAXPROCS(cfg.MaxProcs)

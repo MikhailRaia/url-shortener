@@ -1,15 +1,12 @@
 package app
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
+	"context"
 	"fmt"
-	"math/big"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/MikhailRaia/url-shortener/internal/auth"
@@ -22,6 +19,7 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/storage/file"
 	"github.com/MikhailRaia/url-shortener/internal/storage/memory"
 	"github.com/MikhailRaia/url-shortener/internal/storage/postgres"
+	"github.com/MikhailRaia/url-shortener/internal/tls"
 	"github.com/MikhailRaia/url-shortener/internal/worker"
 	"github.com/rs/zerolog/log"
 )
@@ -97,89 +95,77 @@ func NewApp(cfg *config.Config) *App {
 func (a *App) Run() error {
 	log.Info().Str("url", a.config.BaseURL).Str("address", a.config.ServerAddress).Bool("https", a.config.EnableHTTPS).Msg("Starting server")
 
-	defer func() {
-		if a.dbStorage != nil {
-			log.Info().Msg("Closing database connection")
-			a.dbStorage.Close()
-		}
+	defer a.cleanup()
 
-		if a.deleteWorker != nil {
-			log.Info().Msg("Shutting down delete worker pool")
-			if err := a.deleteWorker.Shutdown(10 * time.Second); err != nil {
-				log.Error().Err(err).Msg("Error during worker pool shutdown")
+	server := a.setupServer()
+	serverError := make(chan error, 1)
+
+	a.startServer(server, serverError)
+
+	return a.handleShutdown(server, serverError)
+}
+
+func (a *App) cleanup() {
+	if a.dbStorage != nil {
+		log.Info().Msg("Closing database connection")
+		a.dbStorage.Close()
+	}
+
+	if a.deleteWorker != nil {
+		log.Info().Msg("Shutting down delete worker pool")
+		timeout := time.Duration(a.config.WorkerShutdownTimeout) * time.Second
+		if err := a.deleteWorker.Shutdown(timeout); err != nil {
+			log.Error().Err(err).Msg("Error during worker pool shutdown")
+		}
+	}
+}
+
+func (a *App) setupServer() *http.Server {
+	return &http.Server{
+		Addr:    a.config.ServerAddress,
+		Handler: a.handler,
+	}
+}
+
+func (a *App) startServer(server *http.Server, serverError chan<- error) {
+	go func() {
+		if a.config.EnableHTTPS {
+			if _, err := os.Stat(a.config.CertFile); os.IsNotExist(err) {
+				if err := tls.CreateSelfSignedCert(a.config.CertFile, a.config.KeyFile); err != nil {
+					serverError <- fmt.Errorf("failed to create self-signed certificate: %w", err)
+					return
+				}
+				log.Info().Msg("Self-signed certificate created")
+			}
+
+			if err := server.ListenAndServeTLS(a.config.CertFile, a.config.KeyFile); err != nil && err != http.ErrServerClosed {
+				serverError <- fmt.Errorf("failed to start HTTPS server: %w", err)
+			}
+		} else {
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				serverError <- fmt.Errorf("failed to start HTTP server: %w", err)
 			}
 		}
 	}()
-
-	if a.config.EnableHTTPS {
-		certFile := "cert.pem"
-		keyFile := "key.pem"
-
-		if _, err := os.Stat(certFile); os.IsNotExist(err) {
-			if err := createSelfSignedCert(certFile, keyFile); err != nil {
-				return fmt.Errorf("failed to create self-signed certificate: %w", err)
-			}
-			log.Info().Msg("Self-signed certificate created")
-		}
-
-		if err := http.ListenAndServeTLS(a.config.ServerAddress, certFile, keyFile, a.handler); err != nil {
-			return fmt.Errorf("failed to start HTTPS server: %w", err)
-		}
-	} else {
-		if err := http.ListenAndServe(a.config.ServerAddress, a.handler); err != nil {
-			return fmt.Errorf("failed to start HTTP server: %w", err)
-		}
-	}
-
-	return nil
 }
 
-func createSelfSignedCert(certFile, keyFile string) error {
-	ca := &x509.Certificate{
-		SerialNumber: big.NewInt(2025),
-		Subject: pkix.Name{
-			Organization: []string{"URL Shortener"},
-			Country:      []string{"RU"},
-		},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(10, 0, 0),
-		IsCA:                  true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-	}
+func (a *App) handleShutdown(server *http.Server, serverError <-chan error) error {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 
-	priv, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
+	select {
+	case err := <-serverError:
 		return err
-	}
+	case sig := <-stop:
+		log.Info().Str("signal", sig.String()).Msg("Shutting down gracefully...")
 
-	pub := &priv.PublicKey
-	certBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, pub, priv)
-	if err != nil {
-		return err
-	}
+		timeout := time.Duration(a.config.ShutdownTimeout) * time.Second
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
 
-	certOut, err := os.Create(certFile)
-	if err != nil {
-		return err
-	}
-	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes}); err != nil {
-		return err
-	}
-	if err := certOut.Close(); err != nil {
-		return err
-	}
-
-	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		return err
-	}
-	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}); err != nil {
-		return err
-	}
-	if err := keyOut.Close(); err != nil {
-		return err
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown failed: %w", err)
+		}
 	}
 
 	return nil
