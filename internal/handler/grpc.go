@@ -24,13 +24,13 @@ func NewShortenerGRPCServer(urlService URLService) *ShortenerGRPCServer {
 }
 
 func (s *ShortenerGRPCServer) ShortenURL(ctx context.Context, req *proto.URLShortenRequest) (*proto.URLShortenResponse, error) {
-	if req.Url == "" {
+	if req.URL == "" {
 		return nil, status.Error(codes.InvalidArgument, "url is required")
 	}
 
 	userID, _ := middleware.GetUserIDFromContext(ctx)
 
-	shortURL, err := s.urlService.ShortenURLWithUser(ctx, req.Url, userID)
+	shortURL, err := s.urlService.ShortenURLWithUser(ctx, req.URL, userID)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLExists) {
 			return &proto.URLShortenResponse{Result: shortURL}, nil
@@ -42,11 +42,11 @@ func (s *ShortenerGRPCServer) ShortenURL(ctx context.Context, req *proto.URLShor
 }
 
 func (s *ShortenerGRPCServer) ExpandURL(ctx context.Context, req *proto.URLExpandRequest) (*proto.URLExpandResponse, error) {
-	if req.Id == "" {
+	if req.ID == "" {
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	originalURL, err := s.urlService.GetOriginalURLWithDeletedStatus(ctx, req.Id)
+	originalURL, err := s.urlService.GetOriginalURLWithDeletedStatus(ctx, req.ID)
 	if err != nil {
 		if errors.Is(err, storage.ErrURLDeleted) {
 			return nil, status.Error(codes.Unavailable, "url has been deleted")
@@ -73,13 +73,13 @@ func (s *ShortenerGRPCServer) ListUserURLs(ctx context.Context, _ *emptypb.Empty
 	}
 
 	resp := &proto.UserURLsResponse{
-		Url: make([]*proto.URLData, 0, len(urls)),
+		URL: make([]*proto.URLData, 0, len(urls)),
 	}
 
 	for _, u := range urls {
-		resp.Url = append(resp.Url, &proto.URLData{
-			ShortUrl:    u.ShortURL,
-			OriginalUrl: u.OriginalURL,
+		resp.URL = append(resp.URL, &proto.URLData{
+			ShortURL:    u.ShortURL,
+			OriginalURL: u.OriginalURL,
 		})
 	}
 
