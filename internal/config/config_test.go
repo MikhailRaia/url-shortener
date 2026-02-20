@@ -129,3 +129,99 @@ func TestNewConfigEnvOverridesArgs(t *testing.T) {
 		t.Errorf("NewConfig() BaseURL = %v, want %v", cfg.BaseURL, "http://localhost:9000")
 	}
 }
+
+func TestNewConfigTrustedSubnetFlag(t *testing.T) {
+	oldArgs := os.Args
+	oldTrustedSubnet := os.Getenv("TRUSTED_SUBNET")
+
+	defer func() {
+		os.Args = oldArgs
+		os.Setenv("TRUSTED_SUBNET", oldTrustedSubnet)
+	}()
+
+	os.Unsetenv("TRUSTED_SUBNET")
+
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = []string{"cmd", "-t", "192.168.1.0/24"}
+
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
+
+	if cfg.TrustedSubnet != "192.168.1.0/24" {
+		t.Errorf("NewConfig() TrustedSubnet = %v, want %v", cfg.TrustedSubnet, "192.168.1.0/24")
+	}
+}
+
+func TestNewConfigTrustedSubnetEnv(t *testing.T) {
+	oldArgs := os.Args
+	oldTrustedSubnet := os.Getenv("TRUSTED_SUBNET")
+
+	defer func() {
+		os.Args = oldArgs
+		os.Setenv("TRUSTED_SUBNET", oldTrustedSubnet)
+	}()
+
+	os.Setenv("TRUSTED_SUBNET", "10.0.0.0/8")
+
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = []string{"cmd"}
+
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
+
+	if cfg.TrustedSubnet != "10.0.0.0/8" {
+		t.Errorf("NewConfig() TrustedSubnet = %v, want %v", cfg.TrustedSubnet, "10.0.0.0/8")
+	}
+}
+
+func TestNewConfigTrustedSubnetEnvOverridesFlag(t *testing.T) {
+	oldArgs := os.Args
+	oldTrustedSubnet := os.Getenv("TRUSTED_SUBNET")
+
+	defer func() {
+		os.Args = oldArgs
+		os.Setenv("TRUSTED_SUBNET", oldTrustedSubnet)
+	}()
+
+	os.Setenv("TRUSTED_SUBNET", "172.16.0.0/12")
+
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = []string{"cmd", "-t", "192.168.1.0/24"}
+
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
+
+	if cfg.TrustedSubnet != "172.16.0.0/12" {
+		t.Errorf("NewConfig() TrustedSubnet = %v, want %v", cfg.TrustedSubnet, "172.16.0.0/12")
+	}
+}
+
+func TestNewConfigTrustedSubnetDefault(t *testing.T) {
+	oldArgs := os.Args
+	oldTrustedSubnet := os.Getenv("TRUSTED_SUBNET")
+
+	defer func() {
+		os.Args = oldArgs
+		os.Setenv("TRUSTED_SUBNET", oldTrustedSubnet)
+	}()
+
+	os.Unsetenv("TRUSTED_SUBNET")
+
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = []string{"cmd"}
+
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
+
+	if cfg.TrustedSubnet != "" {
+		t.Errorf("NewConfig() TrustedSubnet = %v, want %v", cfg.TrustedSubnet, "")
+	}
+}

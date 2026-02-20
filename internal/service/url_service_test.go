@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 )
 
 type mockStorage struct {
@@ -68,6 +69,10 @@ func (m *mockStorage) DeleteUserURLs(userID string, urlIDs []string) error {
 		return m.deleteUserURLsFunc(userID, urlIDs)
 	}
 	return nil
+}
+
+func (m *mockStorage) GetStats() (*storage.Stats, error) {
+	return &storage.Stats{URLs: 0, Users: 0}, nil
 }
 
 func TestURLService_ShortenURL(t *testing.T) {

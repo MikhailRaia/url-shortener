@@ -13,6 +13,7 @@ import (
 
 	"github.com/MikhailRaia/url-shortener/internal/middleware"
 	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -68,6 +69,10 @@ func (m *MockGzipURLService) GetOriginalURLWithDeletedStatus(ctx context.Context
 
 func (m *MockGzipURLService) DeleteUserURLs(userID string, urlIDs []string) error {
 	return nil
+}
+
+func (m *MockGzipURLService) GetStats() (*storage.Stats, error) {
+	return &storage.Stats{URLs: 0, Users: 0}, nil
 }
 
 func TestGzipCompression(t *testing.T) {

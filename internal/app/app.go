@@ -80,7 +80,7 @@ func NewApp(cfg *config.Config) *App {
 	deleteWorker.Start()
 	log.Info().Msg("Delete worker pool started")
 
-	httpHandler := handler.NewHandlerWithDeleteWorker(urlService, dbStorage, deleteWorker)
+	httpHandler := handler.NewHandlerWithTrustedSubnet(urlService, dbStorage, deleteWorker, cfg.TrustedSubnet)
 
 	return &App{
 		config:       cfg,

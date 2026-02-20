@@ -36,6 +36,8 @@ type Config struct {
 	ShutdownTimeout int `json:"shutdown_timeout"`
 	// WorkerShutdownTimeout is the timeout for worker pool shutdown in seconds (default: 10)
 	WorkerShutdownTimeout int `json:"worker_shutdown_timeout"`
+	// TrustedSubnet is the trusted subnet in CIDR notation for /api/internal/stats endpoint (flag: -t, env: TRUSTED_SUBNET)
+	TrustedSubnet string `json:"trusted_subnet"`
 	// ConfigPath is the path to the JSON configuration file (flag: -c, -config)
 	ConfigPath string
 }
@@ -54,6 +56,7 @@ func NewConfig() (*Config, error) {
 		KeyFile:               "key.pem",
 		ShutdownTimeout:       15,
 		WorkerShutdownTimeout: 10,
+		TrustedSubnet:         "",
 	}
 
 	// 1. Define all flags
@@ -66,8 +69,9 @@ func NewConfig() (*Config, error) {
 	flag.IntVar(&cfg.MaxProcs, "p", cfg.MaxProcs, "GOMAXPROCS value (0=auto)")
 	flag.StringVar(&cfg.CertFile, "cert", cfg.CertFile, "Path to SSL certificate")
 	flag.StringVar(&cfg.KeyFile, "key", cfg.KeyFile, "Path to SSL key")
-	flag.IntVar(&cfg.ShutdownTimeout, "t", cfg.ShutdownTimeout, "Shutdown timeout in seconds")
+	flag.IntVar(&cfg.ShutdownTimeout, "st", cfg.ShutdownTimeout, "Shutdown timeout in seconds")
 	flag.IntVar(&cfg.WorkerShutdownTimeout, "wt", cfg.WorkerShutdownTimeout, "Worker pool shutdown timeout in seconds")
+	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "Trusted subnet in CIDR notation (e.g. 127.0.0.0/8)")
 	flag.StringVar(&cfg.ConfigPath, "c", "", "Path to JSON configuration file")
 	flag.StringVar(&cfg.ConfigPath, "config", "", "Path to JSON configuration file (long form)")
 
@@ -111,6 +115,7 @@ func NewConfig() (*Config, error) {
 			KeyFile               *string `json:"key_file"`
 			ShutdownTimeout       *int    `json:"shutdown_timeout"`
 			WorkerShutdownTimeout *int    `json:"worker_shutdown_timeout"`
+			TrustedSubnet         *string `json:"trusted_subnet"`
 		}
 
 		if err := json.Unmarshal(data, &jsonCfg); err != nil {
@@ -150,6 +155,9 @@ func NewConfig() (*Config, error) {
 		}
 		if jsonCfg.WorkerShutdownTimeout != nil {
 			cfg.WorkerShutdownTimeout = *jsonCfg.WorkerShutdownTimeout
+		}
+		if jsonCfg.TrustedSubnet != nil {
+			cfg.TrustedSubnet = *jsonCfg.TrustedSubnet
 		}
 	}
 
@@ -207,6 +215,10 @@ func NewConfig() (*Config, error) {
 		if n, err := strconv.Atoi(envWorkerShutdownTimeout); err == nil {
 			cfg.WorkerShutdownTimeout = n
 		}
+	}
+
+	if envTrustedSubnet := os.Getenv("TRUSTED_SUBNET"); envTrustedSubnet != "" {
+		cfg.TrustedSubnet = envTrustedSubnet
 	}
 
 	return cfg, nil

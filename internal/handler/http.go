@@ -50,6 +50,10 @@ type URLService interface {
 	// DeleteUserURLs marks user URLs as deleted.
 	// Returns an error if the operation fails.
 	DeleteUserURLs(userID string, urlIDs []string) error
+
+	// GetStats retrieves statistics about URLs and users.
+	// Returns stats or an error if the operation fails.
+	GetStats() (*storage.Stats, error)
 }
 
 // DBPinger defines a health-check capability for backing stores.
@@ -66,9 +70,10 @@ type DeleteWorker interface {
 // It provides endpoints for shortening URLs, retrieving original URLs,
 // managing user URLs, and checking database health.
 type Handler struct {
-	urlService   URLService
-	dbPinger     DBPinger
-	deleteWorker DeleteWorker
+	urlService    URLService
+	dbPinger      DBPinger
+	deleteWorker  DeleteWorker
+	trustedSubnet string
 }
 
 // NewHandler constructs a Handler without auth-specific routes.
@@ -87,6 +92,16 @@ func NewHandlerWithDeleteWorker(urlService URLService, dbPinger DBPinger, delete
 		urlService:   urlService,
 		dbPinger:     dbPinger,
 		deleteWorker: deleteWorker,
+	}
+}
+
+// NewHandlerWithTrustedSubnet constructs a Handler with a trusted subnet for the stats endpoint.
+func NewHandlerWithTrustedSubnet(urlService URLService, dbPinger DBPinger, deleteWorker DeleteWorker, trustedSubnet string) *Handler {
+	return &Handler{
+		urlService:    urlService,
+		dbPinger:      dbPinger,
+		deleteWorker:  deleteWorker,
+		trustedSubnet: trustedSubnet,
 	}
 }
 
@@ -114,7 +129,7 @@ func (h *Handler) RegisterRoutes() http.Handler {
 }
 
 // RegisterRoutesWithAuth registers endpoints with authentication and user-specific features.
-// Endpoints include all public routes plus: GET /api/user/urls, DELETE /api/user/urls
+// Endpoints include all public routes plus: GET /api/user/urls, DELETE /api/user/urls, GET /api/internal/stats
 func (h *Handler) RegisterRoutesWithAuth(authMiddleware *middleware.AuthMiddleware) http.Handler {
 	r := chi.NewRouter()
 
@@ -133,6 +148,8 @@ func (h *Handler) RegisterRoutesWithAuth(authMiddleware *middleware.AuthMiddlewa
 	r.Post("/api/shorten/batch", h.handleShortenBatchWithAuth)
 	r.Get("/{id}", h.handleRedirect)
 	r.Get("/ping", h.handlePing)
+
+	r.Get("/api/internal/stats", h.handleStats)
 
 	r.Get("/api/user/urls", h.handleGetUserURLs)
 	r.Delete("/api/user/urls", h.handleDeleteUserURLs)
@@ -493,4 +510,47 @@ func (h *Handler) handleDeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func (h *Handler) handleStats(w http.ResponseWriter, r *http.Request) {
+	if h.trustedSubnet == "" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	clientIP := r.Header.Get("X-Real-IP")
+	if clientIP == "" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	isAllowed, err := IsIPInCIDR(clientIP, h.trustedSubnet)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to validate IP against CIDR")
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	if !isAllowed {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	stats, err := h.urlService.GetStats()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get stats")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	response, err := json.Marshal(stats)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal stats response")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(response)
 }

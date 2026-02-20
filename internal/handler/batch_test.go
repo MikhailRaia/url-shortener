@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/MikhailRaia/url-shortener/internal/model"
+	"github.com/MikhailRaia/url-shortener/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,6 +67,10 @@ func (m *MockBatchURLService) GetOriginalURLWithDeletedStatus(ctx context.Contex
 
 func (m *MockBatchURLService) DeleteUserURLs(userID string, urlIDs []string) error {
 	return nil
+}
+
+func (m *MockBatchURLService) GetStats() (*storage.Stats, error) {
+	return &storage.Stats{URLs: 0, Users: 0}, nil
 }
 
 func TestHandleShortenBatch(t *testing.T) {
