@@ -1,10 +1,13 @@
 package config
 
 import (
+	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // Config holds application configuration loaded from flags and environment variables.
@@ -12,38 +15,153 @@ import (
 // (e.g., SERVER_ADDRESS, BASE_URL, DATABASE_DSN).
 type Config struct {
 	// ServerAddress is the TCP address the server listens on (flag: -a, default: :8080)
-	ServerAddress string
+	ServerAddress string `json:"server_address"`
 	// BaseURL is the base URL for shortened URLs (flag: -b, default: http://localhost:8080)
-	BaseURL string
+	BaseURL string `json:"base_url"`
 	// FileStoragePath is the path to file-based storage (flag: -f, default: ~/.url-shortener/storage.json)
-	FileStoragePath string
+	FileStoragePath string `json:"file_storage_path"`
 	// DatabaseDSN is the PostgreSQL connection string (flag: -d, optional)
-	DatabaseDSN string
-	// JWTSecretKey is the secret key for signing JWT tokens (flag: -s)
-	JWTSecretKey string
+	DatabaseDSN string `json:"database_dsn"`
+	// JWTSecretKey is the secret key for signing JWT tokens (flag: -jwt)
+	JWTSecretKey string `json:"jwt_secret_key"`
+	// EnableHTTPS indicates if the server should use HTTPS (flag: -s)
+	EnableHTTPS bool `json:"enable_https"`
 	// MaxProcs is the GOMAXPROCS value (flag: -p, 0=auto)
-	MaxProcs int
+	MaxProcs int `json:"max_procs"`
+	// CertFile is the path to the SSL certificate file (default: cert.pem)
+	CertFile string `json:"cert_file"`
+	// KeyFile is the path to the SSL key file (default: key.pem)
+	KeyFile string `json:"key_file"`
+	// ShutdownTimeout is the timeout for graceful shutdown in seconds (default: 15)
+	ShutdownTimeout int `json:"shutdown_timeout"`
+	// WorkerShutdownTimeout is the timeout for worker pool shutdown in seconds (default: 10)
+	WorkerShutdownTimeout int `json:"worker_shutdown_timeout"`
+	// ConfigPath is the path to the JSON configuration file (flag: -c, -config)
+	ConfigPath string
 }
 
 // NewConfig returns a Config initialized from command-line flags and environment variables.
-func NewConfig() *Config {
+func NewConfig() (*Config, error) {
 	cfg := &Config{
-		ServerAddress:   ":8080",
-		BaseURL:         "http://localhost:8080",
-		FileStoragePath: getDefaultStoragePath(),
-		DatabaseDSN:     "",
-		JWTSecretKey:    "default-secret-key-change-in-production",
-		MaxProcs:        0,
+		ServerAddress:         ":8080",
+		BaseURL:               "http://localhost:8080",
+		FileStoragePath:       getDefaultStoragePath(),
+		DatabaseDSN:           "",
+		JWTSecretKey:          "default-secret-key-change-in-production",
+		EnableHTTPS:           false,
+		MaxProcs:              0,
+		CertFile:              "cert.pem",
+		KeyFile:               "key.pem",
+		ShutdownTimeout:       15,
+		WorkerShutdownTimeout: 10,
 	}
 
+	// 1. Define all flags
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address (e.g. localhost:8888)")
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "Base URL for shortened URLs (e.g. http://localhost:8000)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "Path to file storage")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database connection string (e.g. postgres://username:password@localhost:5432/database_name)")
-	flag.StringVar(&cfg.JWTSecretKey, "s", cfg.JWTSecretKey, "JWT secret key for signing tokens")
+	flag.StringVar(&cfg.JWTSecretKey, "jwt", cfg.JWTSecretKey, "JWT secret key for signing tokens")
+	flag.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "Enable HTTPS")
 	flag.IntVar(&cfg.MaxProcs, "p", cfg.MaxProcs, "GOMAXPROCS value (0=auto)")
+	flag.StringVar(&cfg.CertFile, "cert", cfg.CertFile, "Path to SSL certificate")
+	flag.StringVar(&cfg.KeyFile, "key", cfg.KeyFile, "Path to SSL key")
+	flag.IntVar(&cfg.ShutdownTimeout, "t", cfg.ShutdownTimeout, "Shutdown timeout in seconds")
+	flag.IntVar(&cfg.WorkerShutdownTimeout, "wt", cfg.WorkerShutdownTimeout, "Worker pool shutdown timeout in seconds")
+	flag.StringVar(&cfg.ConfigPath, "c", "", "Path to JSON configuration file")
+	flag.StringVar(&cfg.ConfigPath, "config", "", "Path to JSON configuration file (long form)")
 
+	// 2. Determine config path from env or command line before full flag.Parse()
+	configPath := os.Getenv("CONFIG")
+	for i, arg := range os.Args {
+		if (arg == "-c" || arg == "-config" || arg == "--config") && i+1 < len(os.Args) {
+			configPath = os.Args[i+1]
+			break
+		}
+		if strings.HasPrefix(arg, "-c=") {
+			configPath = strings.TrimPrefix(arg, "-c=")
+			break
+		}
+		if strings.HasPrefix(arg, "-config=") {
+			configPath = strings.TrimPrefix(arg, "-config=")
+			break
+		}
+		if strings.HasPrefix(arg, "--config=") {
+			configPath = strings.TrimPrefix(arg, "--config=")
+			break
+		}
+	}
+
+	// 3. Load from JSON if path is provided
+	if configPath != "" {
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config file %s: %w", configPath, err)
+		}
+
+		var jsonCfg struct {
+			ServerAddress         *string `json:"server_address"`
+			BaseURL               *string `json:"base_url"`
+			FileStoragePath       *string `json:"file_storage_path"`
+			DatabaseDSN           *string `json:"database_dsn"`
+			JWTSecretKey          *string `json:"jwt_secret_key"`
+			EnableHTTPS           *bool   `json:"enable_https"`
+			MaxProcs              *int    `json:"max_procs"`
+			CertFile              *string `json:"cert_file"`
+			KeyFile               *string `json:"key_file"`
+			ShutdownTimeout       *int    `json:"shutdown_timeout"`
+			WorkerShutdownTimeout *int    `json:"worker_shutdown_timeout"`
+		}
+
+		if err := json.Unmarshal(data, &jsonCfg); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal config file %s: %w", configPath, err)
+		}
+
+		// Update defaults with JSON values if they were present in JSON
+		if jsonCfg.ServerAddress != nil {
+			cfg.ServerAddress = *jsonCfg.ServerAddress
+		}
+		if jsonCfg.BaseURL != nil {
+			cfg.BaseURL = *jsonCfg.BaseURL
+		}
+		if jsonCfg.FileStoragePath != nil {
+			cfg.FileStoragePath = *jsonCfg.FileStoragePath
+		}
+		if jsonCfg.DatabaseDSN != nil {
+			cfg.DatabaseDSN = *jsonCfg.DatabaseDSN
+		}
+		if jsonCfg.JWTSecretKey != nil {
+			cfg.JWTSecretKey = *jsonCfg.JWTSecretKey
+		}
+		if jsonCfg.EnableHTTPS != nil {
+			cfg.EnableHTTPS = *jsonCfg.EnableHTTPS
+		}
+		if jsonCfg.MaxProcs != nil {
+			cfg.MaxProcs = *jsonCfg.MaxProcs
+		}
+		if jsonCfg.CertFile != nil {
+			cfg.CertFile = *jsonCfg.CertFile
+		}
+		if jsonCfg.KeyFile != nil {
+			cfg.KeyFile = *jsonCfg.KeyFile
+		}
+		if jsonCfg.ShutdownTimeout != nil {
+			cfg.ShutdownTimeout = *jsonCfg.ShutdownTimeout
+		}
+		if jsonCfg.WorkerShutdownTimeout != nil {
+			cfg.WorkerShutdownTimeout = *jsonCfg.WorkerShutdownTimeout
+		}
+	}
+
+	// 4. Parse flags (will overwrite JSON values if flag is provided)
 	flag.Parse()
+
+	// 5. Apply environment variables (highest priority)
+	if envEnableHTTPS := os.Getenv("ENABLE_HTTPS"); envEnableHTTPS != "" {
+		if b, err := strconv.ParseBool(envEnableHTTPS); err == nil {
+			cfg.EnableHTTPS = b
+		}
+	}
 
 	if envServerAddress := os.Getenv("SERVER_ADDRESS"); envServerAddress != "" {
 		cfg.ServerAddress = envServerAddress
@@ -71,7 +189,27 @@ func NewConfig() *Config {
 		}
 	}
 
-	return cfg
+	if envCertFile := os.Getenv("CERT_FILE"); envCertFile != "" {
+		cfg.CertFile = envCertFile
+	}
+
+	if envKeyFile := os.Getenv("KEY_FILE"); envKeyFile != "" {
+		cfg.KeyFile = envKeyFile
+	}
+
+	if envShutdownTimeout := os.Getenv("SHUTDOWN_TIMEOUT"); envShutdownTimeout != "" {
+		if n, err := strconv.Atoi(envShutdownTimeout); err == nil {
+			cfg.ShutdownTimeout = n
+		}
+	}
+
+	if envWorkerShutdownTimeout := os.Getenv("WORKER_SHUTDOWN_TIMEOUT"); envWorkerShutdownTimeout != "" {
+		if n, err := strconv.Atoi(envWorkerShutdownTimeout); err == nil {
+			cfg.WorkerShutdownTimeout = n
+		}
+	}
+
+	return cfg, nil
 }
 
 func getDefaultStoragePath() string {
