@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/MikhailRaia/url-shortener/internal/auth"
 	"github.com/MikhailRaia/url-shortener/internal/config"
+	internalgrpc "github.com/MikhailRaia/url-shortener/internal/grpc"
+	"github.com/MikhailRaia/url-shortener/internal/grpc/proto"
 	"github.com/MikhailRaia/url-shortener/internal/handler"
 	"github.com/MikhailRaia/url-shortener/internal/logger"
 	"github.com/MikhailRaia/url-shortener/internal/middleware"
@@ -22,6 +25,8 @@ import (
 	"github.com/MikhailRaia/url-shortener/internal/tls"
 	"github.com/MikhailRaia/url-shortener/internal/worker"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 // App wires storage, services, middleware, and HTTP handlers and controls the server lifecycle.
@@ -32,6 +37,7 @@ type App struct {
 	jwtService     *auth.JWTService
 	authMiddleware *middleware.AuthMiddleware
 	deleteWorker   *worker.DeleteWorkerPool
+	grpcServer     *grpc.Server
 }
 
 // NewApp creates and initializes application dependencies and HTTP routes.
@@ -82,27 +88,53 @@ func NewApp(cfg *config.Config) *App {
 
 	httpHandler := handler.NewHandlerWithTrustedSubnet(urlService, dbStorage, deleteWorker, cfg.TrustedSubnet)
 
+	// Инициализируем gRPC сервер
+	var grpcOpts []grpc.ServerOption
+	authInterceptor := internalgrpc.NewAuthInterceptor(jwtService)
+	grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(authInterceptor.Unary()))
+
+	if cfg.EnableHTTPS {
+		// Если сертификатов нет, они создадутся в Run() перед запуском серверов
+		creds, err := credentials.NewServerTLSFromFile(cfg.CertFile, cfg.KeyFile)
+		if err != nil {
+			log.Error().Err(err).Msg("gRPC: Failed to load TLS credentials")
+		} else {
+			grpcOpts = append(grpcOpts, grpc.Creds(creds))
+		}
+	}
+
+	grpcServer := grpc.NewServer(grpcOpts...)
+	shortenerServer := internalgrpc.NewShortenerServer(urlService)
+	proto.RegisterShortenerServiceServer(grpcServer, shortenerServer)
+
 	return &App{
 		config:       cfg,
 		handler:      httpHandler.RegisterRoutesWithAuth(authMiddleware),
 		dbStorage:    dbStorage,
 		jwtService:   jwtService,
 		deleteWorker: deleteWorker,
+		grpcServer:   grpcServer,
 	}
 }
 
-// Run starts the HTTP server and performs graceful shutdown of resources on exit.
+// Run starts the HTTP and gRPC servers and performs graceful shutdown of resources on exit.
 func (a *App) Run() error {
-	log.Info().Str("url", a.config.BaseURL).Str("address", a.config.ServerAddress).Bool("https", a.config.EnableHTTPS).Msg("Starting server")
+	log.Info().
+		Str("url", a.config.BaseURL).
+		Str("http_address", a.config.ServerAddress).
+		Str("grpc_address", a.config.GRPCAddress).
+		Bool("https", a.config.EnableHTTPS).
+		Msg("Starting servers")
 
 	defer a.cleanup()
 
-	server := a.setupServer()
-	serverError := make(chan error, 1)
+	httpServer := a.setupHTTPServer()
+	serverError := make(chan error, 2)
 
-	a.startServer(server, serverError)
+	a.startHTTPServer(httpServer, serverError)
+	a.startGRPCServer(serverError)
 
-	return a.handleShutdown(server, serverError)
+	return a.handleShutdown(httpServer, serverError)
 }
 
 func (a *App) cleanup() {
@@ -118,16 +150,21 @@ func (a *App) cleanup() {
 			log.Error().Err(err).Msg("Error during worker pool shutdown")
 		}
 	}
+
+	if a.grpcServer != nil {
+		log.Info().Msg("Stopping gRPC server")
+		a.grpcServer.GracefulStop()
+	}
 }
 
-func (a *App) setupServer() *http.Server {
+func (a *App) setupHTTPServer() *http.Server {
 	return &http.Server{
 		Addr:    a.config.ServerAddress,
 		Handler: a.handler,
 	}
 }
 
-func (a *App) startServer(server *http.Server, serverError chan<- error) {
+func (a *App) startHTTPServer(server *http.Server, serverError chan<- error) {
 	go func() {
 		if a.config.EnableHTTPS {
 			if _, err := os.Stat(a.config.CertFile); os.IsNotExist(err) {
@@ -149,7 +186,22 @@ func (a *App) startServer(server *http.Server, serverError chan<- error) {
 	}()
 }
 
-func (a *App) handleShutdown(server *http.Server, serverError <-chan error) error {
+func (a *App) startGRPCServer(serverError chan<- error) {
+	go func() {
+		listen, err := net.Listen("tcp", a.config.GRPCAddress)
+		if err != nil {
+			serverError <- fmt.Errorf("failed to listen for gRPC: %w", err)
+			return
+		}
+
+		log.Info().Str("address", a.config.GRPCAddress).Msg("gRPC server listening")
+		if err := a.grpcServer.Serve(listen); err != nil {
+			serverError <- fmt.Errorf("failed to start gRPC server: %w", err)
+		}
+	}()
+}
+
+func (a *App) handleShutdown(httpServer *http.Server, serverError <-chan error) error {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 
@@ -163,8 +215,8 @@ func (a *App) handleShutdown(server *http.Server, serverError <-chan error) erro
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("server shutdown failed: %w", err)
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("HTTP server shutdown failed: %w", err)
 		}
 	}
 

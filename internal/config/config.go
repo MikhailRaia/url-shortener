@@ -16,6 +16,8 @@ import (
 type Config struct {
 	// ServerAddress is the TCP address the server listens on (flag: -a, default: :8080)
 	ServerAddress string `json:"server_address"`
+	// GRPCAddress is the TCP address the gRPC server listens on (flag: -g, default: :8081)
+	GRPCAddress string `json:"grpc_address"`
 	// BaseURL is the base URL for shortened URLs (flag: -b, default: http://localhost:8080)
 	BaseURL string `json:"base_url"`
 	// FileStoragePath is the path to file-based storage (flag: -f, default: ~/.url-shortener/storage.json)
@@ -46,6 +48,7 @@ type Config struct {
 func NewConfig() (*Config, error) {
 	cfg := &Config{
 		ServerAddress:         ":8080",
+		GRPCAddress:           ":8081",
 		BaseURL:               "http://localhost:8080",
 		FileStoragePath:       getDefaultStoragePath(),
 		DatabaseDSN:           "",
@@ -61,6 +64,7 @@ func NewConfig() (*Config, error) {
 
 	// 1. Define all flags
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address (e.g. localhost:8888)")
+	flag.StringVar(&cfg.GRPCAddress, "g", cfg.GRPCAddress, "gRPC server address (e.g. localhost:8081)")
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "Base URL for shortened URLs (e.g. http://localhost:8000)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "Path to file storage")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database connection string (e.g. postgres://username:password@localhost:5432/database_name)")
@@ -105,6 +109,7 @@ func NewConfig() (*Config, error) {
 
 		var jsonCfg struct {
 			ServerAddress         *string `json:"server_address"`
+			GRPCAddress           *string `json:"grpc_address"`
 			BaseURL               *string `json:"base_url"`
 			FileStoragePath       *string `json:"file_storage_path"`
 			DatabaseDSN           *string `json:"database_dsn"`
@@ -125,6 +130,9 @@ func NewConfig() (*Config, error) {
 		// Update defaults with JSON values if they were present in JSON
 		if jsonCfg.ServerAddress != nil {
 			cfg.ServerAddress = *jsonCfg.ServerAddress
+		}
+		if jsonCfg.GRPCAddress != nil {
+			cfg.GRPCAddress = *jsonCfg.GRPCAddress
 		}
 		if jsonCfg.BaseURL != nil {
 			cfg.BaseURL = *jsonCfg.BaseURL
@@ -173,6 +181,10 @@ func NewConfig() (*Config, error) {
 
 	if envServerAddress := os.Getenv("SERVER_ADDRESS"); envServerAddress != "" {
 		cfg.ServerAddress = envServerAddress
+	}
+
+	if envGRPCAddress := os.Getenv("GRPC_ADDRESS"); envGRPCAddress != "" {
+		cfg.GRPCAddress = envGRPCAddress
 	}
 
 	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
