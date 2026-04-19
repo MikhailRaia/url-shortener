@@ -95,3 +95,71 @@ func TestNewConfigJSONPriority(t *testing.T) {
 		t.Errorf("NewConfig() ServerAddress = %v, want %v", cfg.ServerAddress, "env:8080")
 	}
 }
+
+func TestNewConfigWithJSONTrustedSubnet(t *testing.T) {
+	oldArgs := os.Args
+	oldConfig := os.Getenv("CONFIG")
+	oldTrustedSubnet := os.Getenv("TRUSTED_SUBNET")
+
+	defer func() {
+		os.Args = oldArgs
+		os.Setenv("CONFIG", oldConfig)
+		os.Setenv("TRUSTED_SUBNET", oldTrustedSubnet)
+	}()
+
+	os.Unsetenv("CONFIG")
+	os.Unsetenv("TRUSTED_SUBNET")
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	jsonContent := `{
+		"trusted_subnet": "192.168.1.0/24"
+	}`
+	if err := os.WriteFile(configPath, []byte(jsonContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = []string{"cmd", "-c", configPath}
+
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
+
+	if cfg.TrustedSubnet != "192.168.1.0/24" {
+		t.Errorf("NewConfig() TrustedSubnet = %v, want %v", cfg.TrustedSubnet, "192.168.1.0/24")
+	}
+}
+
+func TestNewConfigJSONTrustedSubnetPriority(t *testing.T) {
+	oldArgs := os.Args
+	oldConfig := os.Getenv("CONFIG")
+	oldTrustedSubnet := os.Getenv("TRUSTED_SUBNET")
+
+	defer func() {
+		os.Args = oldArgs
+		os.Setenv("CONFIG", oldConfig)
+		os.Setenv("TRUSTED_SUBNET", oldTrustedSubnet)
+	}()
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	jsonContent := `{"trusted_subnet": "json:192.168.1.0/24"}`
+	if err := os.WriteFile(configPath, []byte(jsonContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	os.Setenv("TRUSTED_SUBNET", "env:10.0.0.0/8")
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = []string{"cmd", "-c", configPath, "-t", "flag:172.16.0.0/12"}
+
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
+
+	if cfg.TrustedSubnet != "env:10.0.0.0/8" {
+		t.Errorf("NewConfig() TrustedSubnet = %v, want %v", cfg.TrustedSubnet, "env:10.0.0.0/8")
+	}
+}

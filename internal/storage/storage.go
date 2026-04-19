@@ -14,6 +14,12 @@ var (
 	ErrURLDeleted = errors.New("url has been deleted")
 )
 
+// Stats holds URL and user statistics
+type Stats struct {
+	URLs  int `json:"urls"`
+	Users int `json:"users"`
+}
+
 // URLStorage defines persistence operations for shortened URLs.
 type URLStorage interface {
 	Save(originalURL string) (string, error)
@@ -31,4 +37,6 @@ type URLStorage interface {
 	GetUserURLs(userID string) ([]model.UserURL, error)
 
 	DeleteUserURLs(userID string, urlIDs []string) error
+
+	GetStats() (*Stats, error)
 }

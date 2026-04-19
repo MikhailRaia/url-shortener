@@ -190,3 +190,31 @@ func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
 
 	return nil
 }
+
+// GetStats returns the count of non-deleted URLs and unique users.
+func (s *Storage) GetStats() (*storage.Stats, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	urlCount := 0
+	for id := range s.urlMap {
+		if !s.deletedMap[id] {
+			urlCount++
+		}
+	}
+
+	userSet := make(map[string]bool)
+	for userID, urls := range s.userURLs {
+		for _, url := range urls {
+			if !s.deletedMap[url.ID] && userID != "" {
+				userSet[userID] = true
+				break
+			}
+		}
+	}
+
+	return &storage.Stats{
+		URLs:  urlCount,
+		Users: len(userSet),
+	}, nil
+}

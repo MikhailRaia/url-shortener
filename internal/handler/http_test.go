@@ -74,6 +74,10 @@ func (m *mockURLService) DeleteUserURLs(userID string, urlIDs []string) error {
 	return nil
 }
 
+func (m *mockURLService) GetStats() (*storage.Stats, error) {
+	return &storage.Stats{URLs: 0, Users: 0}, nil
+}
+
 func TestHandler_handleShorten(t *testing.T) {
 	tests := []struct {
 		name           string

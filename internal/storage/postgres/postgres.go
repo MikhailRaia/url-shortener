@@ -418,3 +418,29 @@ func (s *Storage) DeleteUserURLs(userID string, urlIDs []string) error {
 
 	return nil
 }
+
+// GetStats returns the count of URLs and unique users.
+func (s *Storage) GetStats() (*storage.Stats, error) {
+	ctx := context.Background()
+
+	urlCountQuery := `SELECT COUNT(*) FROM urls WHERE is_deleted = FALSE`
+	userCountQuery := `SELECT COUNT(DISTINCT user_id) FROM urls WHERE user_id IS NOT NULL`
+
+	var urlCount int
+	var userCount int
+
+	err := s.pool.QueryRow(ctx, urlCountQuery).Scan(&urlCount)
+	if err != nil {
+		return nil, fmt.Errorf("error counting URLs: %w", err)
+	}
+
+	err = s.pool.QueryRow(ctx, userCountQuery).Scan(&userCount)
+	if err != nil {
+		return nil, fmt.Errorf("error counting users: %w", err)
+	}
+
+	return &storage.Stats{
+		URLs:  urlCount,
+		Users: userCount,
+	}, nil
+}

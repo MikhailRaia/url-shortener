@@ -16,6 +16,8 @@ import (
 type Config struct {
 	// ServerAddress is the TCP address the server listens on (flag: -a, default: :8080)
 	ServerAddress string `json:"server_address"`
+	// GRPCAddress is the TCP address the gRPC server listens on (flag: -g, default: :8081)
+	GRPCAddress string `json:"grpc_address"`
 	// BaseURL is the base URL for shortened URLs (flag: -b, default: http://localhost:8080)
 	BaseURL string `json:"base_url"`
 	// FileStoragePath is the path to file-based storage (flag: -f, default: ~/.url-shortener/storage.json)
@@ -36,6 +38,8 @@ type Config struct {
 	ShutdownTimeout int `json:"shutdown_timeout"`
 	// WorkerShutdownTimeout is the timeout for worker pool shutdown in seconds (default: 10)
 	WorkerShutdownTimeout int `json:"worker_shutdown_timeout"`
+	// TrustedSubnet is the trusted subnet in CIDR notation for /api/internal/stats endpoint (flag: -t, env: TRUSTED_SUBNET)
+	TrustedSubnet string `json:"trusted_subnet"`
 	// ConfigPath is the path to the JSON configuration file (flag: -c, -config)
 	ConfigPath string
 }
@@ -44,6 +48,7 @@ type Config struct {
 func NewConfig() (*Config, error) {
 	cfg := &Config{
 		ServerAddress:         ":8080",
+		GRPCAddress:           ":8081",
 		BaseURL:               "http://localhost:8080",
 		FileStoragePath:       getDefaultStoragePath(),
 		DatabaseDSN:           "",
@@ -54,10 +59,12 @@ func NewConfig() (*Config, error) {
 		KeyFile:               "key.pem",
 		ShutdownTimeout:       15,
 		WorkerShutdownTimeout: 10,
+		TrustedSubnet:         "",
 	}
 
 	// 1. Define all flags
 	flag.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address (e.g. localhost:8888)")
+	flag.StringVar(&cfg.GRPCAddress, "g", cfg.GRPCAddress, "gRPC server address (e.g. localhost:8081)")
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "Base URL for shortened URLs (e.g. http://localhost:8000)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "Path to file storage")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "Database connection string (e.g. postgres://username:password@localhost:5432/database_name)")
@@ -66,8 +73,9 @@ func NewConfig() (*Config, error) {
 	flag.IntVar(&cfg.MaxProcs, "p", cfg.MaxProcs, "GOMAXPROCS value (0=auto)")
 	flag.StringVar(&cfg.CertFile, "cert", cfg.CertFile, "Path to SSL certificate")
 	flag.StringVar(&cfg.KeyFile, "key", cfg.KeyFile, "Path to SSL key")
-	flag.IntVar(&cfg.ShutdownTimeout, "t", cfg.ShutdownTimeout, "Shutdown timeout in seconds")
+	flag.IntVar(&cfg.ShutdownTimeout, "st", cfg.ShutdownTimeout, "Shutdown timeout in seconds")
 	flag.IntVar(&cfg.WorkerShutdownTimeout, "wt", cfg.WorkerShutdownTimeout, "Worker pool shutdown timeout in seconds")
+	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "Trusted subnet in CIDR notation (e.g. 127.0.0.0/8)")
 	flag.StringVar(&cfg.ConfigPath, "c", "", "Path to JSON configuration file")
 	flag.StringVar(&cfg.ConfigPath, "config", "", "Path to JSON configuration file (long form)")
 
@@ -101,6 +109,7 @@ func NewConfig() (*Config, error) {
 
 		var jsonCfg struct {
 			ServerAddress         *string `json:"server_address"`
+			GRPCAddress           *string `json:"grpc_address"`
 			BaseURL               *string `json:"base_url"`
 			FileStoragePath       *string `json:"file_storage_path"`
 			DatabaseDSN           *string `json:"database_dsn"`
@@ -111,6 +120,7 @@ func NewConfig() (*Config, error) {
 			KeyFile               *string `json:"key_file"`
 			ShutdownTimeout       *int    `json:"shutdown_timeout"`
 			WorkerShutdownTimeout *int    `json:"worker_shutdown_timeout"`
+			TrustedSubnet         *string `json:"trusted_subnet"`
 		}
 
 		if err := json.Unmarshal(data, &jsonCfg); err != nil {
@@ -120,6 +130,9 @@ func NewConfig() (*Config, error) {
 		// Update defaults with JSON values if they were present in JSON
 		if jsonCfg.ServerAddress != nil {
 			cfg.ServerAddress = *jsonCfg.ServerAddress
+		}
+		if jsonCfg.GRPCAddress != nil {
+			cfg.GRPCAddress = *jsonCfg.GRPCAddress
 		}
 		if jsonCfg.BaseURL != nil {
 			cfg.BaseURL = *jsonCfg.BaseURL
@@ -151,6 +164,9 @@ func NewConfig() (*Config, error) {
 		if jsonCfg.WorkerShutdownTimeout != nil {
 			cfg.WorkerShutdownTimeout = *jsonCfg.WorkerShutdownTimeout
 		}
+		if jsonCfg.TrustedSubnet != nil {
+			cfg.TrustedSubnet = *jsonCfg.TrustedSubnet
+		}
 	}
 
 	// 4. Parse flags (will overwrite JSON values if flag is provided)
@@ -165,6 +181,10 @@ func NewConfig() (*Config, error) {
 
 	if envServerAddress := os.Getenv("SERVER_ADDRESS"); envServerAddress != "" {
 		cfg.ServerAddress = envServerAddress
+	}
+
+	if envGRPCAddress := os.Getenv("GRPC_ADDRESS"); envGRPCAddress != "" {
+		cfg.GRPCAddress = envGRPCAddress
 	}
 
 	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
@@ -207,6 +227,10 @@ func NewConfig() (*Config, error) {
 		if n, err := strconv.Atoi(envWorkerShutdownTimeout); err == nil {
 			cfg.WorkerShutdownTimeout = n
 		}
+	}
+
+	if envTrustedSubnet := os.Getenv("TRUSTED_SUBNET"); envTrustedSubnet != "" {
+		cfg.TrustedSubnet = envTrustedSubnet
 	}
 
 	return cfg, nil
